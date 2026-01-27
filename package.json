@@ -2,12 +2,17 @@
   "name": "diandeng-broker",
   "version": "1.0.0",
   "description": "点灯Broker Lite - A lightweight MQTT broker service",
-  "main": "src/index.js",
+  "main": "cli.js",
+  "bin": {
+    "diandeng-broker": "./cli.js"
+  },
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node cli.js",
+    "broker": "node cli.js broker",
+    "web": "node cli.js web",
     "dev": "node --watch src/index.js",
-    "web": "node web/index.js",
-    "web:dev": "node --watch web/index.js"
+    "dev:web": "node --watch web/index.js",
+    "build": "node scripts/build.js"
   },
   "keywords": [
     "mqtt",
@@ -18,7 +23,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@fastify/static": "^7.0.0",
     "aedes": "^0.51.3",
     "better-sqlite3": "^11.0.0",
     "fastify": "^4.26.0",

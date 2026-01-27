@@ -1,9 +1,7 @@
 const Fastify = require('fastify');
-const fastifyStatic = require('@fastify/static');
 const http = require('http');
 const ws = require('websocket-stream');
 const Aedes = require('aedes');
-const path = require('path');
 const { initDatabase } = require('../src/database');
 const { setupWebRoutes } = require('./routes');
 
@@ -40,12 +38,6 @@ async function main() {
   // 创建Fastify HTTP服务器
   const fastify = Fastify({
     logger: true
-  });
-
-  // 注册静态文件服务
-  fastify.register(fastifyStatic, {
-    root: path.join(__dirname, 'public'),
-    prefix: '/'
   });
 
   // 设置Web管理路由

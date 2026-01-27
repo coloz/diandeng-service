@@ -5,11 +5,50 @@ aedes为基础组件，Fastify提供必要的HTTP服务，使用Map缓存，使�
 设备端可以是手机app、web页面、esp32、arduino等，可通过mqtt连接到本broker上；
 同时提供HTTP接口，让设备可以HTTP接入，用HTTP接口实现类似发布和订阅的效果；
 
-## 运行broker
+## 快速开始
+
+### 开发模式
+```bash
+npm install
+npm start          # 启动所有服务 (MQTT Broker + HTTP API)
+npm run broker     # 仅启动 MQTT Broker
+npm run web        # 仅启动 HTTP API 服务
 ```
-npm i
-npm start
+
+### 构建生产版本
+```bash
+npm run build      # 构建到 dist 目录
 ```
+
+构建后的使用方法：
+```bash
+cd dist
+npm install
+node cli.js        # 启动所有服务
+node cli.js broker # 仅启动 MQTT Broker
+node cli.js web    # 仅启动 HTTP API 服务
+```
+
+### CLI 命令
+```bash
+node cli.js [命令]
+
+命令:
+  all, start    启动所有服务 (MQTT Broker + HTTP API) [默认]
+  broker        仅启动 MQTT Broker 服务
+  web           仅启动 HTTP API 服务
+  help          显示帮助信息
+  version       显示版本信息
+```
+
+### 环境变量
+```bash
+MQTT_PORT=1883    # MQTT 服务端口
+HTTP_PORT=3000    # HTTP API 端口
+WEB_PORT=3001     # Web API 端口
+WS_PORT=8083      # WebSocket 端口
+```
+
 首次运行自动创建和初始化数据库
 
 ## 设备注册

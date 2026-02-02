@@ -1,20 +1,20 @@
-const Aedes = require('aedes');
-const { createServer } = require('net');
-const Fastify = require('fastify');
-const { initDatabase, getDb } = require('./database');
-const { setupRoutes } = require('./routes');
-const { setupBroker } = require('./broker');
-const { deviceCache } = require('./cache');
-const config = require('./config');
+import Aedes from 'aedes';
+import { createServer } from 'net';
+import Fastify from 'fastify';
+import { initDatabase } from './database';
+import { setupRoutes } from './routes';
+import { setupBroker } from './broker';
+import { deviceCache } from './cache';
+import config from './config';
 
-async function main() {
+async function main(): Promise<void> {
   // 初始化数据库
   console.log('正在初始化数据库...');
   initDatabase();
   console.log('数据库初始化完成');
 
   // 创建Aedes实例
-  const aedes = Aedes();
+  const aedes = new Aedes();
 
   // 设置Broker逻辑
   setupBroker(aedes, deviceCache);

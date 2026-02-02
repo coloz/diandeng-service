@@ -1,51 +1,52 @@
-const {
+import crypto from 'crypto';
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import {
   getAllDevices,
   getDeviceByUuid,
   getDeviceGroups,
-  getDeviceByAuthKey,
   updateDeviceConnection,
   createDevice,
   createGroup,
   getGroupByName,
   addDeviceToGroup
-} = require('../src/database');
-const crypto = require('crypto');
+} from '../src/database';
+import { Device, Group, ApiResponse, AdminCreateDeviceBody, DeviceParams } from '../src/types';
 
 /**
  * 生成随机字符串
  */
-function generateRandomString(length = 32) {
+function generateRandomString(length: number = 32): string {
   return crypto.randomBytes(length).toString('hex').slice(0, length);
 }
 
 /**
  * 生成authKey
  */
-function generateAuthKey() {
+function generateAuthKey(): string {
   return generateRandomString(32);
 }
 
 /**
  * 生成clientId
  */
-function generateClientId() {
+function generateClientId(): string {
   return `device_${generateRandomString(16)}`;
 }
 
 /**
  * 生成密码
  */
-function generatePassword() {
+function generatePassword(): string {
   return generateRandomString(24);
 }
 
 /**
  * 设置Web管理路由
  */
-function setupWebRoutes(fastify) {
+export function setupWebRoutes(fastify: FastifyInstance): void {
   
   // 健康检查
-  fastify.get('/health', async (request, reply) => {
+  fastify.get('/health', async (_request: FastifyRequest, _reply: FastifyReply): Promise<ApiResponse> => {
     return {
       message: 1000,
       detail: {
@@ -60,7 +61,7 @@ function setupWebRoutes(fastify) {
    * 获取所有设备列表
    * GET /admin/devices
    */
-  fastify.get('/admin/devices', async (request, reply) => {
+  fastify.get('/admin/devices', async (_request: FastifyRequest, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const devices = getAllDevices();
       
@@ -84,7 +85,7 @@ function setupWebRoutes(fastify) {
    * 获取单个设备详情
    * GET /admin/device/:uuid
    */
-  fastify.get('/admin/device/:uuid', async (request, reply) => {
+  fastify.get('/admin/device/:uuid', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { uuid } = request.params;
       const device = getDeviceByUuid(uuid);
@@ -118,7 +119,7 @@ function setupWebRoutes(fastify) {
    * 创建设备（管理接口）
    * POST /admin/device
    */
-  fastify.post('/admin/device', async (request, reply) => {
+  fastify.post('/admin/device', async (request: FastifyRequest<{ Body: AdminCreateDeviceBody }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { uuid, token } = request.body || {};
 
@@ -169,7 +170,7 @@ function setupWebRoutes(fastify) {
    * 获取设备连接信息（用于测试）
    * GET /admin/device/:uuid/connection
    */
-  fastify.get('/admin/device/:uuid/connection', async (request, reply) => {
+  fastify.get('/admin/device/:uuid/connection', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { uuid } = request.params;
       const device = getDeviceByUuid(uuid);
@@ -208,5 +209,3 @@ function setupWebRoutes(fastify) {
     }
   });
 }
-
-module.exports = { setupWebRoutes };

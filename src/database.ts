@@ -1,42 +1,43 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+import Database, { Statement, Database as BetterSqlite3Database, RunResult } from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+import { Device, Group } from './types';
 
-let db = null;
+let db: BetterSqlite3Database | null = null;
 
 /**
  * 预编译语句缓存
  * 避免每次查询都重新编译 SQL，显著提升性能
  */
-const stmtCache = new Map();
+const stmtCache = new Map<string, Statement<unknown[], unknown>>();
 
 /**
  * 获取预编译语句（懒加载 + 缓存）
- * @param {string} key - 语句的唯一标识
- * @param {string} sql - SQL 语句
- * @returns {Database.Statement} 预编译语句
+ * @param key - 语句的唯一标识
+ * @param sql - SQL 语句
+ * @returns 预编译语句
  */
-function getStmt(key, sql) {
+function getStmt(key: string, sql: string): Statement<unknown[], unknown> {
   if (!stmtCache.has(key)) {
     stmtCache.set(key, getDb().prepare(sql));
   }
-  return stmtCache.get(key);
+  return stmtCache.get(key) as Statement<unknown[], unknown>;
 }
 
 /**
  * 清除语句缓存（数据库重新初始化时调用）
  */
-function clearStmtCache() {
+function clearStmtCache(): void {
   stmtCache.clear();
 }
 
 /**
  * 初始化数据库
  */
-function initDatabase() {
+export function initDatabase(): BetterSqlite3Database {
   const dbPath = path.join(__dirname, '..', 'data', 'broker.db');
   
   // 确保data目录存在
-  const fs = require('fs');
   const dataDir = path.dirname(dbPath);
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -109,7 +110,7 @@ function initDatabase() {
 /**
  * 获取数据库实例
  */
-function getDb() {
+export function getDb(): BetterSqlite3Database {
   if (!db) {
     throw new Error('数据库未初始化');
   }
@@ -119,7 +120,7 @@ function getDb() {
 /**
  * 创建设备
  */
-function createDevice(uuid, token, authKey) {
+export function createDevice(uuid: string, token: string, authKey: string): RunResult {
   const stmt = getStmt('createDevice', `
     INSERT INTO devices (uuid, token, auth_key)
     VALUES (?, ?, ?)
@@ -130,37 +131,43 @@ function createDevice(uuid, token, authKey) {
 /**
  * 通过authKey获取设备
  */
-function getDeviceByAuthKey(authKey) {
+export function getDeviceByAuthKey(authKey: string): Device | undefined {
   const stmt = getStmt('getDeviceByAuthKey', `
     SELECT * FROM devices WHERE auth_key = ?
   `);
-  return stmt.get(authKey);
+  return stmt.get(authKey) as Device | undefined;
 }
 
 /**
  * 通过uuid获取设备
  */
-function getDeviceByUuid(uuid) {
+export function getDeviceByUuid(uuid: string): Device | undefined {
   const stmt = getStmt('getDeviceByUuid', `
     SELECT * FROM devices WHERE uuid = ?
   `);
-  return stmt.get(uuid);
+  return stmt.get(uuid) as Device | undefined;
 }
 
 /**
  * 通过clientId获取设备
  */
-function getDeviceByClientId(clientId) {
+export function getDeviceByClientId(clientId: string): Device | undefined {
   const stmt = getStmt('getDeviceByClientId', `
     SELECT * FROM devices WHERE client_id = ?
   `);
-  return stmt.get(clientId);
+  return stmt.get(clientId) as Device | undefined;
 }
 
 /**
  * 更新设备连接信息
  */
-function updateDeviceConnection(authKey, clientId, username, password, iotToken) {
+export function updateDeviceConnection(
+  authKey: string,
+  clientId: string,
+  username: string,
+  password: string,
+  iotToken: string
+): RunResult {
   const stmt = getStmt('updateDeviceConnection', `
     UPDATE devices 
     SET client_id = ?, username = ?, password = ?, iot_token = ?, updated_at = CURRENT_TIMESTAMP
@@ -172,7 +179,7 @@ function updateDeviceConnection(authKey, clientId, username, password, iotToken)
 /**
  * 创建组
  */
-function createGroup(name) {
+export function createGroup(name: string): RunResult {
   const stmt = getStmt('createGroup', `
     INSERT OR IGNORE INTO groups (name) VALUES (?)
   `);
@@ -182,17 +189,17 @@ function createGroup(name) {
 /**
  * 获取组
  */
-function getGroupByName(name) {
+export function getGroupByName(name: string): Group | undefined {
   const stmt = getStmt('getGroupByName', `
     SELECT * FROM groups WHERE name = ?
   `);
-  return stmt.get(name);
+  return stmt.get(name) as Group | undefined;
 }
 
 /**
  * 将设备添加到组
  */
-function addDeviceToGroup(deviceId, groupId) {
+export function addDeviceToGroup(deviceId: number, groupId: number): RunResult {
   const stmt = getStmt('addDeviceToGroup', `
     INSERT OR IGNORE INTO device_groups (device_id, group_id) VALUES (?, ?)
   `);
@@ -202,31 +209,31 @@ function addDeviceToGroup(deviceId, groupId) {
 /**
  * 获取设备所在的所有组
  */
-function getDeviceGroups(deviceId) {
+export function getDeviceGroups(deviceId: number): Group[] {
   const stmt = getStmt('getDeviceGroups', `
     SELECT g.* FROM groups g
     INNER JOIN device_groups dg ON g.id = dg.group_id
     WHERE dg.device_id = ?
   `);
-  return stmt.all(deviceId);
+  return stmt.all(deviceId) as Group[];
 }
 
 /**
  * 获取组内所有设备
  */
-function getGroupDevices(groupId) {
+export function getGroupDevices(groupId: number): Device[] {
   const stmt = getStmt('getGroupDevices', `
     SELECT d.* FROM devices d
     INNER JOIN device_groups dg ON d.id = dg.device_id
     WHERE dg.group_id = ?
   `);
-  return stmt.all(groupId);
+  return stmt.all(groupId) as Device[];
 }
 
 /**
  * 检查设备是否在指定组中
  */
-function isDeviceInGroup(deviceId, groupName) {
+export function isDeviceInGroup(deviceId: number, groupName: string): boolean {
   const stmt = getStmt('isDeviceInGroup', `
     SELECT 1 FROM device_groups dg
     INNER JOIN groups g ON g.id = dg.group_id
@@ -238,26 +245,9 @@ function isDeviceInGroup(deviceId, groupName) {
 /**
  * 获取所有设备
  */
-function getAllDevices() {
+export function getAllDevices(): Device[] {
   const stmt = getStmt('getAllDevices', `
     SELECT * FROM devices ORDER BY created_at DESC
   `);
-  return stmt.all();
+  return stmt.all([]) as Device[];
 }
-
-module.exports = {
-  initDatabase,
-  getDb,
-  createDevice,
-  getDeviceByAuthKey,
-  getDeviceByUuid,
-  getDeviceByClientId,
-  updateDeviceConnection,
-  createGroup,
-  getGroupByName,
-  addDeviceToGroup,
-  getDeviceGroups,
-  getGroupDevices,
-  isDeviceInGroup,
-  getAllDevices
-};

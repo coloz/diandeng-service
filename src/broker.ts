@@ -1,15 +1,33 @@
-const { getDeviceByClientId, getDeviceGroups, isDeviceInGroup } = require('./database');
-const config = require('./config');
+import Aedes, { Client as AedesClient, AuthenticateError, PublishPacket, Subscription } from 'aedes';
+import { getDeviceByClientId, getDeviceGroups, isDeviceInGroup } from './database';
+import config from './config';
+import { Device, ForwardMessage, IDeviceCache } from './types';
+
+interface DeviceMessage {
+  toDevice?: string;
+  toGroup?: string;
+  data: unknown;
+}
+
+interface GroupMessage {
+  toGroup: string;
+  data: unknown;
+}
 
 /**
  * 设置MQTT Broker逻辑
  */
-function setupBroker(aedes, deviceCache) {
+export function setupBroker(aedes: Aedes, deviceCache: IDeviceCache): void {
   
   /**
    * 客户端认证
    */
-  aedes.authenticate = (client, username, password, callback) => {
+  aedes.authenticate = (
+    client: AedesClient,
+    username: Readonly<string> | undefined,
+    password: Readonly<Buffer> | undefined,
+    callback: (error: AuthenticateError | null, success: boolean | null) => void
+  ): void => {
     const clientId = client.id;
     const passwordStr = password ? password.toString() : '';
 
@@ -20,7 +38,7 @@ function setupBroker(aedes, deviceCache) {
     
     if (!device) {
       console.log(`[AUTH] 认证失败: 设备不存在 ${clientId}`);
-      const error = new Error('设备不存在');
+      const error = new Error('设备不存在') as AuthenticateError;
       error.returnCode = 4; // Bad username or password
       return callback(error, false);
     }
@@ -28,7 +46,7 @@ function setupBroker(aedes, deviceCache) {
     // 验证用户名和密码
     if (device.username !== username || device.password !== passwordStr) {
       console.log(`[AUTH] 认证失败: 凭证错误 ${clientId}`);
-      const error = new Error('用户名或密码错误');
+      const error = new Error('用户名或密码错误') as AuthenticateError;
       error.returnCode = 4;
       return callback(error, false);
     }
@@ -49,7 +67,15 @@ function setupBroker(aedes, deviceCache) {
   /**
    * 授权发布
    */
-  aedes.authorizePublish = (client, packet, callback) => {
+  aedes.authorizePublish = (
+    client: AedesClient | null,
+    packet: PublishPacket,
+    callback: (error: Error | null) => void
+  ): void => {
+    if (!client) {
+      return callback(new Error('客户端不存在'));
+    }
+
     const clientId = client.id;
     const topic = packet.topic;
     const payload = packet.payload.toString();
@@ -93,7 +119,15 @@ function setupBroker(aedes, deviceCache) {
   /**
    * 授权订阅
    */
-  aedes.authorizeSubscribe = (client, sub, callback) => {
+  aedes.authorizeSubscribe = (
+    client: AedesClient | null,
+    sub: Subscription,
+    callback: (error: Error | null, subscription: Subscription | null) => void
+  ): void => {
+    if (!client) {
+      return callback(new Error('客户端不存在'), null);
+    }
+
     const clientId = client.id;
     const topic = sub.topic;
 
@@ -103,7 +137,7 @@ function setupBroker(aedes, deviceCache) {
     const device = deviceCache.getDeviceByClientId(clientId);
     if (!device) {
       console.log(`[SUBSCRIBE] 设备信息不存在: ${clientId}`);
-      return callback(new Error('设备未认证'));
+      return callback(new Error('设备未认证'), null);
     }
 
     // 检查topic权限（限制机制2）
@@ -112,7 +146,7 @@ function setupBroker(aedes, deviceCache) {
     if (!isAuthorized) {
       console.log(`[SUBSCRIBE] 无权订阅topic，断开连接: ${clientId} -> ${topic}`);
       client.close();
-      return callback(new Error('无权订阅此topic'));
+      return callback(new Error('无权订阅此topic'), null);
     }
 
     console.log(`[SUBSCRIBE] 订阅授权成功: ${clientId} -> ${topic}`);
@@ -122,7 +156,7 @@ function setupBroker(aedes, deviceCache) {
   /**
    * 客户端连接事件
    */
-  aedes.on('client', (client) => {
+  aedes.on('client', (client: AedesClient) => {
     console.log(`[CONNECT] 客户端已连接: ${client.id}`);
     deviceCache.setClientOnline(client.id, client);
   });
@@ -130,7 +164,7 @@ function setupBroker(aedes, deviceCache) {
   /**
    * 客户端断开连接事件
    */
-  aedes.on('clientDisconnect', (client) => {
+  aedes.on('clientDisconnect', (client: AedesClient) => {
     console.log(`[DISCONNECT] 客户端已断开: ${client.id}`);
     deviceCache.setClientOffline(client.id);
   });
@@ -138,14 +172,14 @@ function setupBroker(aedes, deviceCache) {
   /**
    * 客户端错误事件
    */
-  aedes.on('clientError', (client, error) => {
+  aedes.on('clientError', (client: AedesClient, error: Error) => {
     console.log(`[ERROR] 客户端错误 ${client.id}: ${error.message}`);
   });
 
   /**
    * 发布事件 - 处理消息转发
    */
-  aedes.on('publish', (packet, client) => {
+  aedes.on('publish', (packet: PublishPacket, client: AedesClient | null) => {
     if (!client) return; // 系统消息忽略
 
     const topic = packet.topic;
@@ -154,7 +188,7 @@ function setupBroker(aedes, deviceCache) {
     console.log(`[MESSAGE] ${client.id} 发布消息到 ${topic}: ${payload.substring(0, 100)}...`);
 
     try {
-      const message = JSON.parse(payload);
+      const message = JSON.parse(payload) as DeviceMessage;
 
       // 处理设备间消息转发
       if (topic.startsWith('/device/') && topic.endsWith('/s')) {
@@ -163,24 +197,24 @@ function setupBroker(aedes, deviceCache) {
       
       // 处理组消息转发
       if (topic.startsWith('/group/') && topic.endsWith('/s')) {
-        handleGroupMessage(aedes, client, topic, message, deviceCache);
+        handleGroupMessage(aedes, client, topic, message as GroupMessage, deviceCache);
       }
     } catch (error) {
-      console.log(`[MESSAGE] 消息解析失败: ${error.message}`);
+      console.log(`[MESSAGE] 消息解析失败: ${(error as Error).message}`);
     }
   });
 
   /**
    * 订阅事件
    */
-  aedes.on('subscribe', (subscriptions, client) => {
+  aedes.on('subscribe', (subscriptions: Subscription[], client: AedesClient) => {
     console.log(`[SUBSCRIBE] ${client.id} 订阅了: ${subscriptions.map(s => s.topic).join(', ')}`);
   });
 
   /**
    * 取消订阅事件
    */
-  aedes.on('unsubscribe', (subscriptions, client) => {
+  aedes.on('unsubscribe', (subscriptions: string[], client: AedesClient) => {
     console.log(`[UNSUBSCRIBE] ${client.id} 取消订阅: ${subscriptions.join(', ')}`);
   });
 }
@@ -188,7 +222,13 @@ function setupBroker(aedes, deviceCache) {
 /**
  * 检查topic权限
  */
-function checkTopicPermission(clientId, topic, action, device, deviceCache) {
+function checkTopicPermission(
+  clientId: string,
+  topic: string,
+  action: 'publish' | 'subscribe',
+  device: Device,
+  deviceCache: IDeviceCache
+): boolean {
   // 设备topic格式: /device/{clientId}/s 或 /device/{clientId}/r
   const deviceTopicRegex = /^\/device\/([^/]+)\/(s|r)$/;
   const deviceMatch = topic.match(deviceTopicRegex);
@@ -215,8 +255,7 @@ function checkTopicPermission(clientId, topic, action, device, deviceCache) {
   const groupMatch = topic.match(groupTopicRegex);
   
   if (groupMatch) {
-    const groupName = groupMatch[1];
-    const direction = groupMatch[2];
+    const groupName = groupMatch[1]!;
     
     // 检查设备是否在该组中（限制机制5）
     const isInGroup = deviceCache.isDeviceInGroup(clientId, groupName);
@@ -239,7 +278,12 @@ function checkTopicPermission(clientId, topic, action, device, deviceCache) {
 /**
  * 处理设备间消息转发
  */
-function handleDeviceMessage(aedes, client, message, deviceCache) {
+function handleDeviceMessage(
+  aedes: Aedes,
+  client: AedesClient,
+  message: DeviceMessage,
+  deviceCache: IDeviceCache
+): void {
   const { toDevice, data } = message;
   
   if (!toDevice || !data) {
@@ -248,7 +292,7 @@ function handleDeviceMessage(aedes, client, message, deviceCache) {
   }
 
   // 构造转发消息
-  const forwardMessage = {
+  const forwardMessage: ForwardMessage = {
     fromDevice: client.id,
     data: data
   };
@@ -266,10 +310,12 @@ function handleDeviceMessage(aedes, client, message, deviceCache) {
   
   aedes.publish({
     topic: targetTopic,
-    payload: JSON.stringify(forwardMessage),
+    payload: Buffer.from(JSON.stringify(forwardMessage)),
     qos: 0,
-    retain: false
-  }, (error) => {
+    retain: false,
+    cmd: 'publish',
+    dup: false
+  }, (error: Error | undefined) => {
     if (error) {
       console.log(`[FORWARD] 转发消息失败: ${error.message}`);
     } else {
@@ -281,7 +327,13 @@ function handleDeviceMessage(aedes, client, message, deviceCache) {
 /**
  * 处理组消息转发
  */
-function handleGroupMessage(aedes, client, topic, message, deviceCache) {
+function handleGroupMessage(
+  aedes: Aedes,
+  client: AedesClient,
+  topic: string,
+  message: GroupMessage,
+  deviceCache: IDeviceCache
+): void {
   const { toGroup, data } = message;
   
   if (!toGroup || !data) {
@@ -296,18 +348,18 @@ function handleGroupMessage(aedes, client, topic, message, deviceCache) {
   }
 
   // 构造转发消息
-  const forwardMessage = {
+  const forwardMessage: ForwardMessage = {
     fromGroup: toGroup,
     fromDevice: client.id,
     data: data
   };
 
   // 遍历所有在线设备，为HTTP模式的设备暂存消息
-  for (const [clientId, deviceInfo] of deviceCache.deviceByClientId.entries()) {
-    if (clientId !== client.id && deviceCache.isDeviceInGroup(clientId, toGroup)) {
-      if (deviceCache.isHttpMode(clientId)) {
-        deviceCache.addPendingMessage(clientId, forwardMessage);
-        console.log(`[GROUP] 组消息已暂存给HTTP设备: ${clientId}`);
+  for (const [clientIdEntry] of deviceCache.deviceByClientId.entries()) {
+    if (clientIdEntry !== client.id && deviceCache.isDeviceInGroup(clientIdEntry, toGroup)) {
+      if (deviceCache.isHttpMode(clientIdEntry)) {
+        deviceCache.addPendingMessage(clientIdEntry, forwardMessage);
+        console.log(`[GROUP] 组消息已暂存给HTTP设备: ${clientIdEntry}`);
       }
     }
   }
@@ -317,10 +369,12 @@ function handleGroupMessage(aedes, client, topic, message, deviceCache) {
   
   aedes.publish({
     topic: targetTopic,
-    payload: JSON.stringify(forwardMessage),
+    payload: Buffer.from(JSON.stringify(forwardMessage)),
     qos: 0,
-    retain: false
-  }, (error) => {
+    retain: false,
+    cmd: 'publish',
+    dup: false
+  }, (error: Error | undefined) => {
     if (error) {
       console.log(`[GROUP] 组消息转发失败: ${error.message}`);
     } else {
@@ -328,5 +382,3 @@ function handleGroupMessage(aedes, client, topic, message, deviceCache) {
     }
   });
 }
-
-module.exports = { setupBroker };

@@ -2,23 +2,28 @@
   "name": "diandeng-broker",
   "version": "1.0.0",
   "description": "点灯Broker Lite - A lightweight MQTT broker service",
-  "main": "cli.js",
+  "main": "dist/cli.js",
   "bin": {
-    "diandeng-broker": "./cli.js"
+    "diandeng-broker": "./dist/cli.js"
   },
   "scripts": {
-    "start": "node cli.js",
-    "broker": "node cli.js broker",
-    "web": "node cli.js web",
-    "dev": "node --watch src/index.js",
-    "dev:web": "node --watch web/index.js",
-    "build": "node scripts/build.js"
+    "start": "node dist/cli.js",
+    "broker": "node dist/cli.js broker",
+    "web": "node dist/cli.js web",
+    "dev": "ts-node src/index.ts",
+    "dev:web": "ts-node web/index.ts",
+    "build": "ts-node scripts/build.ts",
+    "build:tsc": "tsc",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "watch": "tsc --watch"
   },
   "keywords": [
     "mqtt",
     "broker",
     "iot",
-    "aedes"
+    "aedes",
+    "typescript"
   ],
   "author": "",
   "license": "MIT",
@@ -28,5 +33,14 @@
     "fastify": "^4.26.0",
     "uuid": "^9.0.1",
     "websocket-stream": "^5.5.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.11.0",
+    "@types/uuid": "^9.0.7",
+    "esbuild": "^0.27.2",
+    "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   }
 }

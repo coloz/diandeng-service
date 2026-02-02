@@ -3,7 +3,9 @@
  * 集中管理所有可配置项
  */
 
-module.exports = {
+import { Config } from './types';
+
+const config: Config = {
   // MQTT服务器配置
   mqtt: {
     port: 1883,
@@ -38,3 +40,5 @@ module.exports = {
     filename: 'broker.db'
   }
 };
+
+export default config;

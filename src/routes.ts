@@ -1,6 +1,6 @@
-const { v4: uuidv4 } = require('uuid');
-const crypto = require('crypto');
-const {
+import crypto from 'crypto';
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import {
   createDevice,
   getDeviceByAuthKey,
   getDeviceByUuid,
@@ -9,43 +9,54 @@ const {
   getGroupByName,
   addDeviceToGroup,
   getDeviceGroups
-} = require('./database');
+} from './database';
+import {
+  IDeviceCache,
+  Device,
+  DeviceAuthBody,
+  DeviceAuthQuery,
+  DevicePublishBody,
+  DeviceSubscribeQuery,
+  DeviceGroupBody,
+  DeviceGroupsQuery,
+  ApiResponse
+} from './types';
 
 /**
  * 生成随机字符串
  */
-function generateRandomString(length = 32) {
+function generateRandomString(length: number = 32): string {
   return crypto.randomBytes(length).toString('hex').slice(0, length);
 }
 
 /**
  * 生成authKey
  */
-function generateAuthKey() {
+function generateAuthKey(): string {
   return generateRandomString(32);
 }
 
 /**
  * 生成clientId
  */
-function generateClientId() {
+function generateClientId(): string {
   return `device_${generateRandomString(16)}`;
 }
 
 /**
  * 生成密码
  */
-function generatePassword() {
+function generatePassword(): string {
   return generateRandomString(24);
 }
 
 /**
  * 设置HTTP路由
  */
-function setupRoutes(fastify, deviceCache) {
+export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache): void {
   
   // 健康检查
-  fastify.get('/health', async (request, reply) => {
+  fastify.get('/health', async (_request: FastifyRequest, _reply: FastifyReply): Promise<ApiResponse> => {
     const stats = deviceCache.getStats();
     return {
       message: 1000,
@@ -62,7 +73,7 @@ function setupRoutes(fastify, deviceCache) {
    * POST /device/auth
    * Body: { uuid, token }
    */
-  fastify.post('/device/auth', async (request, reply) => {
+  fastify.post('/device/auth', async (request: FastifyRequest<{ Body: DeviceAuthBody }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { uuid, token } = request.body || {};
 
@@ -118,7 +129,7 @@ function setupRoutes(fastify, deviceCache) {
    * GET /device/auth?authKey={authKey}&mode={mode}
    * mode: mqtt(默认) | http
    */
-  fastify.get('/device/auth', async (request, reply) => {
+  fastify.get('/device/auth', async (request: FastifyRequest<{ Querystring: DeviceAuthQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { authKey, mode = 'mqtt' } = request.query;
 
@@ -156,7 +167,7 @@ function setupRoutes(fastify, deviceCache) {
       updateDeviceConnection(authKey, clientId, username, password, iotToken);
 
       // 更新缓存
-      const deviceInfo = {
+      const deviceInfo: Device = {
         ...device,
         client_id: clientId,
         username: username,
@@ -213,7 +224,7 @@ function setupRoutes(fastify, deviceCache) {
    * POST /device/s
    * Body: { authKey, toDevice, data } 或 { authKey, toGroup, data }
    */
-  fastify.post('/device/s', async (request, reply) => {
+  fastify.post('/device/s', async (request: FastifyRequest<{ Body: DevicePublishBody }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { authKey, toDevice, toGroup, data } = request.body || {};
 
@@ -253,6 +264,13 @@ function setupRoutes(fastify, deviceCache) {
 
       const clientId = deviceInfo.client_id;
 
+      if (!clientId) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: '设备未上线'
+        });
+      }
+
       // 检查发布频率限制（限制机制3）
       if (!deviceCache.checkPublishRate(clientId)) {
         return reply.status(429).send({
@@ -286,7 +304,7 @@ function setupRoutes(fastify, deviceCache) {
             deviceCache.addPendingMessage(toDevice, forwardMessage);
             console.log(`[HTTP] 消息已暂存给HTTP设备: ${toDevice}`);
           }
-          // 如果是MQTT模式，消息会通过broker.js的逻辑转发
+          // 如果是MQTT模式，消息会通过broker.ts的逻辑转发
         }
       }
 
@@ -332,7 +350,7 @@ function setupRoutes(fastify, deviceCache) {
    * GET /device/r?authKey={authKey}
    * 获取后清除暂存的消息
    */
-  fastify.get('/device/r', async (request, reply) => {
+  fastify.get('/device/r', async (request: FastifyRequest<{ Querystring: DeviceSubscribeQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { authKey } = request.query;
 
@@ -357,6 +375,13 @@ function setupRoutes(fastify, deviceCache) {
       }
 
       const clientId = deviceInfo.client_id;
+
+      if (!clientId) {
+        return reply.status(400).send({
+          message: 1007,
+          detail: '设备未上线'
+        });
+      }
 
       // 检查设备是否为HTTP模式
       if (!deviceCache.isHttpMode(clientId)) {
@@ -390,7 +415,7 @@ function setupRoutes(fastify, deviceCache) {
    * POST /device/group
    * Body: { authKey, groupName }
    */
-  fastify.post('/device/group', async (request, reply) => {
+  fastify.post('/device/group', async (request: FastifyRequest<{ Body: DeviceGroupBody }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { authKey, groupName } = request.body || {};
 
@@ -412,6 +437,13 @@ function setupRoutes(fastify, deviceCache) {
       // 创建组（如果不存在）
       createGroup(groupName);
       const group = getGroupByName(groupName);
+
+      if (!group) {
+        return reply.status(500).send({
+          message: 1002,
+          detail: '创建组失败'
+        });
+      }
 
       // 将设备添加到组
       addDeviceToGroup(device.id, group.id);
@@ -443,7 +475,7 @@ function setupRoutes(fastify, deviceCache) {
    * 获取设备所在的组
    * GET /device/groups?authKey={authKey}
    */
-  fastify.get('/device/groups', async (request, reply) => {
+  fastify.get('/device/groups', async (request: FastifyRequest<{ Querystring: DeviceGroupsQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
       const { authKey } = request.query;
 
@@ -479,5 +511,3 @@ function setupRoutes(fastify, deviceCache) {
     }
   });
 }
-
-module.exports = { setupRoutes };

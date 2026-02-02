@@ -5,8 +5,9 @@
  * 统一入口，用于启动 MQTT Broker 和 Web 管理面板
  */
 
-const { spawn } = require('child_process');
-const path = require('path');
+import { spawn, ChildProcess } from 'child_process';
+import path from 'path';
+import fs from 'fs';
 
 // 版本信息
 const VERSION = '1.0.0';
@@ -20,23 +21,23 @@ const colors = {
   blue: '\x1b[34m',
   cyan: '\x1b[36m',
   red: '\x1b[31m'
-};
+} as const;
 
-function log(message, color = '') {
+function log(message: string, color: string = ''): void {
   console.log(`${color}${message}${colors.reset}`);
 }
 
-function printBanner() {
+function printBanner(): void {
   log('\n╔════════════════════════════════════════╗', colors.cyan);
   log('║       点灯Broker Lite v' + VERSION.padEnd(17) + '║', colors.cyan);
   log('║   Lightweight MQTT Broker Service      ║', colors.cyan);
   log('╚════════════════════════════════════════╝\n', colors.cyan);
 }
 
-function printHelp() {
+function printHelp(): void {
   printBanner();
   log('使用方法:', colors.bright);
-  log('  node cli.js [命令] [选项]\n');
+  log('  node dist/cli.js [命令] [选项]\n');
   
   log('命令:', colors.bright);
   log('  all, start    启动所有服务 (MQTT Broker + Web 管理面板) [默认]');
@@ -53,49 +54,49 @@ function printHelp() {
   log('  WS_PORT       WebSocket 端口 (默认: 8083)\n');
   
   log('示例:', colors.bright);
-  log('  node cli.js                  # 启动所有服务');
-  log('  node cli.js broker           # 仅启动 MQTT Broker');
-  log('  node cli.js web              # 仅启动 Web 面板');
-  log('  MQTT_PORT=1884 node cli.js   # 使用自定义端口\n');
+  log('  node dist/cli.js              # 启动所有服务');
+  log('  node dist/cli.js broker       # 仅启动 MQTT Broker');
+  log('  node dist/cli.js web          # 仅启动 Web 面板');
+  log('  MQTT_PORT=1884 node dist/cli.js  # 使用自定义端口\n');
 }
 
-function printVersion() {
+function printVersion(): void {
   log(`diandeng-broker v${VERSION}`);
 }
 
 /**
  * 启动子进程
  */
-function startProcess(name, scriptPath, color) {
+function startProcess(name: string, scriptPath: string, color: string): ChildProcess {
   const child = spawn('node', [scriptPath], {
     cwd: path.dirname(scriptPath),
     env: process.env,
     stdio: ['inherit', 'pipe', 'pipe']
   });
 
-  child.stdout.on('data', (data) => {
+  child.stdout?.on('data', (data: Buffer) => {
     const lines = data.toString().trim().split('\n');
-    lines.forEach(line => {
+    lines.forEach((line: string) => {
       if (line.trim()) {
         console.log(`${color}[${name}]${colors.reset} ${line}`);
       }
     });
   });
 
-  child.stderr.on('data', (data) => {
+  child.stderr?.on('data', (data: Buffer) => {
     const lines = data.toString().trim().split('\n');
-    lines.forEach(line => {
+    lines.forEach((line: string) => {
       if (line.trim()) {
         console.error(`${color}[${name}]${colors.reset} ${colors.red}${line}${colors.reset}`);
       }
     });
   });
 
-  child.on('error', (err) => {
+  child.on('error', (err: Error) => {
     log(`[${name}] 启动失败: ${err.message}`, colors.red);
   });
 
-  child.on('exit', (code) => {
+  child.on('exit', (code: number | null) => {
     if (code !== 0 && code !== null) {
       log(`[${name}] 进程退出，退出码: ${code}`, colors.yellow);
     }
@@ -107,7 +108,7 @@ function startProcess(name, scriptPath, color) {
 /**
  * 启动 MQTT Broker
  */
-function startBroker() {
+function startBroker(): ChildProcess {
   log('🚀 正在启动 MQTT Broker...', colors.green);
   const scriptPath = path.join(__dirname, 'src', 'index.js');
   return startProcess('Broker', scriptPath, colors.blue);
@@ -116,7 +117,7 @@ function startBroker() {
 /**
  * 启动 Web 管理面板
  */
-function startWeb() {
+function startWeb(): ChildProcess {
   log('🌐 正在启动 Web 管理面板...', colors.green);
   const scriptPath = path.join(__dirname, 'web', 'index.js');
   return startProcess('Web', scriptPath, colors.cyan);
@@ -125,17 +126,17 @@ function startWeb() {
 /**
  * 检查是否为开发环境（存在 web/angular 目录）
  */
-function isDevEnvironment() {
-  const angularDir = path.join(__dirname, 'web', 'angular');
-  return require('fs').existsSync(angularDir);
+function isDevEnvironment(): boolean {
+  const angularDir = path.join(__dirname, '..', 'web', 'angular');
+  return fs.existsSync(angularDir);
 }
 
 /**
  * 启动 Angular 开发服务器
  */
-function startAngular() {
+function startAngular(): ChildProcess {
   log('🅰️  正在启动 Angular 开发服务器...', colors.green);
-  const angularDir = path.join(__dirname, 'web', 'angular');
+  const angularDir = path.join(__dirname, '..', 'web', 'angular');
   
   const child = spawn('npm', ['start'], {
     cwd: angularDir,
@@ -144,29 +145,29 @@ function startAngular() {
     shell: true
   });
 
-  child.stdout.on('data', (data) => {
+  child.stdout?.on('data', (data: Buffer) => {
     const lines = data.toString().trim().split('\n');
-    lines.forEach(line => {
+    lines.forEach((line: string) => {
       if (line.trim()) {
         console.log(`${colors.yellow}[Angular]${colors.reset} ${line}`);
       }
     });
   });
 
-  child.stderr.on('data', (data) => {
+  child.stderr?.on('data', (data: Buffer) => {
     const lines = data.toString().trim().split('\n');
-    lines.forEach(line => {
+    lines.forEach((line: string) => {
       if (line.trim()) {
         console.error(`${colors.yellow}[Angular]${colors.reset} ${colors.red}${line}${colors.reset}`);
       }
     });
   });
 
-  child.on('error', (err) => {
+  child.on('error', (err: Error) => {
     log(`[Angular] 启动失败: ${err.message}`, colors.red);
   });
 
-  child.on('exit', (code) => {
+  child.on('exit', (code: number | null) => {
     if (code !== 0 && code !== null) {
       log(`[Angular] 进程退出，退出码: ${code}`, colors.yellow);
     }
@@ -178,7 +179,7 @@ function startAngular() {
 /**
  * 启动所有服务
  */
-function startAll() {
+function startAll(): ChildProcess[] {
   printBanner();
   const isDev = isDevEnvironment();
   
@@ -188,7 +189,7 @@ function startAll() {
     log('📡 启动所有服务...\n', colors.green);
   }
   
-  const processes = [];
+  const processes: ChildProcess[] = [];
   
   // 启动 Broker
   processes.push(startBroker());
@@ -206,7 +207,7 @@ function startAll() {
   }, 1000);
   
   // 处理退出信号
-  const cleanup = () => {
+  const cleanup = (): void => {
     log('\n🛑 正在关闭所有服务...', colors.yellow);
     processes.forEach(p => {
       if (p && !p.killed) {
@@ -227,7 +228,7 @@ function startAll() {
 }
 
 // 主入口
-function main() {
+function main(): void {
   const args = process.argv.slice(2);
   const command = args[0] || 'all';
 

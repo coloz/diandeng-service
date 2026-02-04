@@ -132,7 +132,7 @@ TOPIC /group/groupName/r
 
 
 ## 限制机制
-1. 一个authkey只能一个设备使用，每次获取连接信息，都将重置iotToken
+1. 一个authkey只能一个设备使用，每次获取连接信息，都将重置连接凭证
 2. 设备只能发布和订阅属于自身的topic，如果操作其他topic将被broker断开连接
 3. 设备消息发布频率最高每秒1次，否则将被broker断开连接
 4. 每条消息长度不能大于1024，否则将被broker断开连接

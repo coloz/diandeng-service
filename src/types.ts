@@ -12,7 +12,6 @@ export interface Device {
   client_id: string | null;
   username: string | null;
   password: string | null;
-  iot_token: string | null;
   created_at: string;
   updated_at: string;
 }

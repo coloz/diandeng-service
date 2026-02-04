@@ -51,7 +51,7 @@ curl "http://localhost:3000/device/auth?authKey=your_auth_key&mode=mqtt"
 
 | 限制项 | 说明 |
 |--------|------|
-| authKey唯一性 | 一个authKey只能一个设备使用，每次获取连接信息都将重置iotToken |
+| authKey唯一性 | 一个authKey只能一个设备使用，每次获取连接信息都将重置连接凭证 |
 | Topic权限 | 设备只能发布和订阅属于自身的topic，否则将被断开连接 |
 | 发布频率 | 每秒最多发布1条消息，超过将被断开连接 |
 | 消息长度 | 每条消息不能大于1024字节，否则将被断开连接 |

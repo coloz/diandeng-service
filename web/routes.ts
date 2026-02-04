@@ -61,21 +61,21 @@ function generateRandomString(length: number = 32): string {
  * 生成authKey
  */
 function generateAuthKey(): string {
-  return generateRandomString(32);
+  return generateRandomString(16);
 }
 
 /**
  * 生成clientId
  */
 function generateClientId(): string {
-  return `device_${generateRandomString(16)}`;
+  return generateRandomString(16);
 }
 
 /**
  * 生成密码
  */
 function generatePassword(): string {
-  return generateRandomString(24);
+  return generateRandomString(16);
 }
 
 /**
@@ -182,7 +182,7 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
     try {
       const { uuid } = request.body || {};
 
-      const deviceUuid = uuid || `device_${generateRandomString(12)}`;
+      const deviceUuid = uuid || generateRandomString(16);
 
       // 检查设备是否已存在
       const existingDevice = getDeviceByUuid(deviceUuid);
@@ -245,10 +245,9 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
       const clientId = generateClientId();
       const username = `user_${device.uuid.slice(0, 8)}`;
       const password = generatePassword();
-      const iotToken = generateRandomString(32);
 
       // 更新数据库
-      updateDeviceConnection(device.auth_key, clientId, username, password, iotToken);
+      updateDeviceConnection(device.auth_key, clientId, username, password);
 
       return {
         message: 1000,

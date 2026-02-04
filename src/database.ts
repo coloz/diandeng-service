@@ -65,7 +65,6 @@ export function initDatabase(): BetterSqlite3Database {
       client_id TEXT,
       username TEXT,
       password TEXT,
-      iot_token TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
@@ -179,15 +178,14 @@ export function updateDeviceConnection(
   authKey: string,
   clientId: string,
   username: string,
-  password: string,
-  iotToken: string
+  password: string
 ): RunResult {
   const stmt = getStmt('updateDeviceConnection', `
     UPDATE devices 
-    SET client_id = ?, username = ?, password = ?, iot_token = ?, updated_at = CURRENT_TIMESTAMP
+    SET client_id = ?, username = ?, password = ?, updated_at = CURRENT_TIMESTAMP
     WHERE auth_key = ?
   `);
-  return stmt.run(clientId, username, password, iotToken, authKey);
+  return stmt.run(clientId, username, password, authKey);
 }
 
 /**

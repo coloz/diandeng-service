@@ -85,7 +85,6 @@ Authorization: Bearer your_admin_token
         "client_id": "device_abc123def456",
         "username": "user_9140dxx9",
         "password": "xxxxxxxxxxxxxxxxx",
-        "iot_token": "xxxxxxxxxxxxxxxxx",
         "created_at": "2026-01-21T10:00:00.000Z",
         "updated_at": "2026-01-21T10:00:00.000Z"
       }
@@ -121,7 +120,6 @@ GET /admin/device/:uuid
     "client_id": "device_abc123def456",
     "username": "user_9140dxx9",
     "password": "xxxxxxxxxxxxxxxxx",
-    "iot_token": "xxxxxxxxxxxxxxxxx",
     "created_at": "2026-01-21T10:00:00.000Z",
     "updated_at": "2026-01-21T10:00:00.000Z",
     "groups": ["9140dxx9843bxxd6bc439exxxxxxxxxx", "my_group_name"]

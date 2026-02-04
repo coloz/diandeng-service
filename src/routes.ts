@@ -36,21 +36,21 @@ function generateRandomString(length: number = 32): string {
  * 生成authKey
  */
 function generateAuthKey(): string {
-  return generateRandomString(32);
+  return generateRandomString(16);
 }
 
 /**
  * 生成clientId
  */
 function generateClientId(): string {
-  return `device_${generateRandomString(16)}`;
+  return generateRandomString(16);
 }
 
 /**
  * 生成密码
  */
 function generatePassword(): string {
-  return generateRandomString(24);
+  return generateRandomString(16);
 }
 
 /**
@@ -164,18 +164,16 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
       const clientId = generateClientId();
       const username = `user_${device.uuid.slice(0, 8)}`;
       const password = generatePassword();
-      const iotToken = generateRandomString(32);
 
       // 更新数据库
-      updateDeviceConnection(authKey, clientId, username, password, iotToken);
+      updateDeviceConnection(authKey, clientId, username, password);
 
       // 更新缓存
       const deviceInfo: Device = {
         ...device,
         client_id: clientId,
         username: username,
-        password: password,
-        iot_token: iotToken
+        password: password
       };
       deviceCache.setDeviceByAuthKey(authKey, deviceInfo);
       deviceCache.setDeviceByClientId(clientId, deviceInfo);

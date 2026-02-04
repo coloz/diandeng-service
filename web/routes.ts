@@ -12,6 +12,43 @@ import {
   getDeviceStatus
 } from '../src/database';
 import { Device, Group, ApiResponse, AdminCreateDeviceBody, DeviceParams } from '../src/types';
+import { ADMIN_TOKEN } from '../src/config';
+
+/**
+ * 判断是否为本地请求
+ */
+function isLocalRequest(request: FastifyRequest): boolean {
+  const ip = request.ip;
+  return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip === '::ffff:127.0.0.1';
+}
+
+/**
+ * 验证 Admin Token
+ */
+function verifyAdminToken(request: FastifyRequest, reply: FastifyReply): boolean {
+  // 如果未配置 ADMIN_TOKEN，则不需要验证（开发模式）
+  if (!ADMIN_TOKEN) {
+    return true;
+  }
+
+  // 本地请求不需要验证
+  if (isLocalRequest(request)) {
+    return true;
+  }
+
+  const authHeader = request.headers['authorization'];
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+
+  if (!token || token !== ADMIN_TOKEN) {
+    reply.status(401).send({
+      message: 1008,
+      detail: '未授权访问，请提供有效的 Admin Token'
+    });
+    return false;
+  }
+
+  return true;
+}
 
 /**
  * 生成随机字符串
@@ -46,7 +83,7 @@ function generatePassword(): string {
  */
 export function setupWebRoutes(fastify: FastifyInstance): void {
   
-  // 健康检查
+  // 健康检查（不需要认证）
   fastify.get('/health', async (_request: FastifyRequest, _reply: FastifyReply): Promise<ApiResponse> => {
     return {
       message: 1000,
@@ -62,7 +99,9 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
    * 获取所有设备列表
    * GET /admin/devices
    */
-  fastify.get('/admin/devices', async (_request: FastifyRequest, reply: FastifyReply): Promise<ApiResponse> => {
+  fastify.get('/admin/devices', async (request: FastifyRequest, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyAdminToken(request, reply)) return;
+    
     try {
       const devices = getAllDevices();
       
@@ -97,7 +136,9 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
    * 获取单个设备详情
    * GET /admin/device/:uuid
    */
-  fastify.get('/admin/device/:uuid', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse> => {
+  fastify.get('/admin/device/:uuid', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyAdminToken(request, reply)) return;
+    
     try {
       const { uuid } = request.params;
       const device = getDeviceByUuid(uuid);
@@ -135,12 +176,13 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
    * 创建设备（管理接口）
    * POST /admin/device
    */
-  fastify.post('/admin/device', async (request: FastifyRequest<{ Body: AdminCreateDeviceBody }>, reply: FastifyReply): Promise<ApiResponse> => {
+  fastify.post('/admin/device', async (request: FastifyRequest<{ Body: AdminCreateDeviceBody }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyAdminToken(request, reply)) return;
+    
     try {
-      const { uuid, token } = request.body || {};
+      const { uuid } = request.body || {};
 
       const deviceUuid = uuid || `device_${generateRandomString(12)}`;
-      const deviceToken = token || generateRandomString(24);
 
       // 检查设备是否已存在
       const existingDevice = getDeviceByUuid(deviceUuid);
@@ -155,7 +197,7 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
       const authKey = generateAuthKey();
 
       // 创建设备记录
-      createDevice(deviceUuid, deviceToken, authKey);
+      createDevice(deviceUuid, authKey);
 
       // 创建默认用户组（以uuid为组名）
       createGroup(deviceUuid);
@@ -169,7 +211,6 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
         message: 1000,
         detail: {
           uuid: deviceUuid,
-          token: deviceToken,
           authKey: authKey
         }
       };
@@ -186,7 +227,9 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
    * 获取设备连接信息（用于测试）
    * GET /admin/device/:uuid/connection
    */
-  fastify.get('/admin/device/:uuid/connection', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse> => {
+  fastify.get('/admin/device/:uuid/connection', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyAdminToken(request, reply)) return;
+    
     try {
       const { uuid } = request.params;
       const device = getDeviceByUuid(uuid);

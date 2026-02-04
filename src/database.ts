@@ -61,7 +61,6 @@ export function initDatabase(): BetterSqlite3Database {
     CREATE TABLE IF NOT EXISTS devices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       uuid TEXT UNIQUE NOT NULL,
-      token TEXT NOT NULL,
       auth_key TEXT UNIQUE NOT NULL,
       client_id TEXT,
       username TEXT,
@@ -135,12 +134,12 @@ export function getDb(): BetterSqlite3Database {
 /**
  * 创建设备
  */
-export function createDevice(uuid: string, token: string, authKey: string): RunResult {
+export function createDevice(uuid: string, authKey: string): RunResult {
   const stmt = getStmt('createDevice', `
-    INSERT INTO devices (uuid, token, auth_key)
-    VALUES (?, ?, ?)
+    INSERT INTO devices (uuid, auth_key)
+    VALUES (?, ?)
   `);
-  return stmt.run(uuid, token, authKey);
+  return stmt.run(uuid, authKey);
 }
 
 /**

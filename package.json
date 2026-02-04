@@ -30,6 +30,7 @@
   "dependencies": {
     "aedes": "^0.51.3",
     "better-sqlite3": "^11.0.0",
+    "dotenv": "^17.2.3",
     "fast-json-stringify": "^6.2.0",
     "fastify": "^4.26.0",
     "uuid": "^9.0.1",

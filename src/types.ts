@@ -8,7 +8,6 @@ import { Statement, Database as BetterSqlite3Database, RunResult } from 'better-
 export interface Device {
   id: number;
   uuid: string;
-  token: string;
   auth_key: string;
   client_id: string | null;
   username: string | null;
@@ -84,7 +83,6 @@ export interface ApiResponse<T = unknown> {
  */
 export interface DeviceAuthBody {
   uuid?: string;
-  token?: string;
 }
 
 /**
@@ -132,7 +130,6 @@ export interface DeviceGroupsQuery {
  */
 export interface AdminCreateDeviceBody {
   uuid?: string;
-  token?: string;
 }
 
 /**

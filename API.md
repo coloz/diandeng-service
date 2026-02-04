@@ -18,7 +18,7 @@
 ```bash
 curl -X POST http://localhost:3000/device/auth \
   -H "Content-Type: application/json" \
-  -d '{"uuid": "your_device_uuid", "token": "your_device_token"}'
+  -d '{"uuid": "your_device_uuid"}'
 ```
 
 ### 2. 设备上线（获取MQTT连接信息）
@@ -43,6 +43,7 @@ curl "http://localhost:3000/device/auth?authKey=your_auth_key&mode=mqtt"
 | 1005 | 发布频率过高（每秒最多1条） |
 | 1006 | 无权操作该组 |
 | 1007 | 设备未上线或未以HTTP模式上线 |
+| 1008 | 未授权访问（Admin Token 无效） |
 
 ---
 

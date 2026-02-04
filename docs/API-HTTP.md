@@ -55,15 +55,13 @@ Content-Type: application/json
 **请求体**
 ```json
 {
-  "uuid": "9140dxx9843bxxd6bc439exxxxxxxxxx",
-  "token": "your_device_token"
+  "uuid": "9140dxx9843bxxd6bc439exxxxxxxxxx"
 }
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | uuid | string | 是 | 设备唯一标识 |
-| token | string | 是 | 设备令牌 |
 
 **响应**
 ```json

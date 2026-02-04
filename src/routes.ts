@@ -78,12 +78,12 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    */
   fastify.post('/device/auth', async (request: FastifyRequest<{ Body: DeviceAuthBody }>, reply: FastifyReply): Promise<ApiResponse> => {
     try {
-      const { uuid, token } = request.body || {};
+      const { uuid } = request.body || {};
 
-      if (!uuid || !token) {
+      if (!uuid) {
         return reply.status(400).send({
           message: 1001,
-          detail: 'uuid和token为必填参数'
+          detail: 'uuid为必填参数'
         });
       }
 
@@ -102,7 +102,7 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
       const authKey = generateAuthKey();
 
       // 创建设备记录
-      createDevice(uuid, token, authKey);
+      createDevice(uuid, authKey);
 
       // 创建默认用户组（以uuid为组名）
       createGroup(uuid);

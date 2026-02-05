@@ -70,6 +70,68 @@ export interface PendingMessage {
 export type DeviceMode = 'mqtt' | 'http';
 
 /**
+ * 定时任务执行方式
+ */
+export type ScheduleMode = 'scheduled' | 'countdown' | 'recurring';
+
+/**
+ * 定时任务接口
+ */
+export interface ScheduledTask {
+  id: string;
+  deviceId: string;        // 目标设备的 clientId
+  command: unknown;        // 要执行的指令数据
+  mode: ScheduleMode;      // 执行方式
+  executeAt: number;       // 执行时间（时间戳，毫秒）
+  interval?: number;       // 循环执行的间隔时间（毫秒），仅 recurring 模式使用
+  createdAt: number;       // 创建时间
+  lastExecutedAt?: number; // 最后执行时间
+  enabled: boolean;        // 是否启用
+}
+
+/**
+ * 创建定时任务请求体
+ */
+export interface CreateScheduleBody {
+  authKey: string;         // 发起者的 authKey
+  toDevice: string;        // 目标设备的 clientId
+  command: unknown;        // 要执行的指令
+  mode: ScheduleMode;      // 执行方式: scheduled | countdown | recurring
+  executeAt?: number;      // 执行时间戳（scheduled 模式必填）
+  countdown?: number;      // 倒计时秒数（countdown 模式必填）
+  interval?: number;       // 循环间隔秒数（recurring 模式必填）
+}
+
+/**
+ * 修改定时任务请求体
+ */
+export interface UpdateScheduleBody {
+  authKey: string;
+  taskId: string;
+  command?: unknown;        // 要执行的指令（可选）
+  mode?: ScheduleMode;      // 执行方式（可选）
+  executeAt?: number;       // 执行时间戳（可选）
+  countdown?: number;       // 倒计时秒数（可选）
+  interval?: number;        // 循环间隔秒数（可选）
+  enabled?: boolean;        // 是否启用（可选）
+}
+
+/**
+ * 取消定时任务请求体
+ */
+export interface CancelScheduleBody {
+  authKey: string;
+  taskId: string;
+}
+
+/**
+ * 查询定时任务请求参数
+ */
+export interface QueryScheduleQuery {
+  authKey: string;
+}
+
+/**
  * API响应接口
  */
 export interface ApiResponse<T = unknown> {
@@ -125,9 +187,9 @@ export interface DeviceGroupsQuery {
 }
 
 /**
- * 管理端创建设备请求体
+ * 用户端创建设备请求体
  */
-export interface AdminCreateDeviceBody {
+export interface UserCreateDeviceBody {
   uuid?: string;
 }
 

@@ -165,6 +165,15 @@ class Logger {
       console.log(`[HTTP] ${message}`, ...args);
     }
   }
+
+  /**
+   * 定时任务调度器日志
+   */
+  scheduler(message: string, ...args: unknown[]): void {
+    if (this.level >= LogLevel.DEBUG) {
+      console.log(`[SCHEDULER] ${message}`, ...args);
+    }
+  }
 }
 
 // 导出单例

@@ -65,8 +65,8 @@ const config: Config = {
 };
 
 /**
- * Admin Token（用于访问管理接口）
+ * User Token（用于访问用户接口）
  */
-export const ADMIN_TOKEN = getEnv('ADMIN_TOKEN', '');
+export const USER_TOKEN = getEnv('USER_TOKEN', '');
 
 export default config;

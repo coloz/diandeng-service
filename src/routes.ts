@@ -21,9 +21,15 @@ import {
   DeviceSubscribeQuery,
   DeviceGroupBody,
   DeviceGroupsQuery,
-  ApiResponse
+  ApiResponse,
+  CreateScheduleBody,
+  CancelScheduleBody,
+  UpdateScheduleBody,
+  QueryScheduleQuery,
+  ScheduleMode
 } from './types';
 import { logger } from './logger';
+import { scheduler } from './scheduler';
 
 /**
  * 生成随机字符串
@@ -528,6 +534,333 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
       return reply.status(500).send({
         message: 1002,
         detail: '服务器内部错误'
+      });
+    }
+  });
+
+  /**
+   * 创建定时任务
+   * POST /schedule
+   * Body: { authKey, toDevice, command, mode, executeAt?, countdown?, interval? }
+   */
+  fastify.post('/schedule', async (request: FastifyRequest<{ Body: CreateScheduleBody }>, reply: FastifyReply): Promise<ApiResponse> => {
+    try {
+      const { authKey, toDevice, command, mode, executeAt, countdown, interval } = request.body || {};
+
+      // 参数校验
+      if (!authKey) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'authKey为必填参数'
+        });
+      }
+
+      if (!toDevice) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'toDevice为必填参数'
+        });
+      }
+
+      if (!command) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'command为必填参数'
+        });
+      }
+
+      if (!mode || !['scheduled', 'countdown', 'recurring'].includes(mode)) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'mode必须是 scheduled、countdown 或 recurring'
+        });
+      }
+
+      // 验证发起者设备
+      const device = getDeviceByAuthKey(authKey);
+      if (!device) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: '设备不存在'
+        });
+      }
+
+      // 根据模式校验参数
+      if (mode === 'scheduled' && !executeAt) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'scheduled模式需要executeAt参数（时间戳）'
+        });
+      }
+
+      if (mode === 'countdown' && (!countdown || countdown <= 0)) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'countdown模式需要正数的countdown参数（秒）'
+        });
+      }
+
+      if (mode === 'recurring' && (!interval || interval <= 0)) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'recurring模式需要正数的interval参数（秒）'
+        });
+      }
+
+      // 创建定时任务
+      const task = scheduler.createTask(toDevice, command, mode as ScheduleMode, {
+        executeAt,
+        countdown,
+        interval
+      });
+
+      return {
+        message: 1000,
+        detail: {
+          taskId: task.id,
+          deviceId: task.deviceId,
+          mode: task.mode,
+          executeAt: task.executeAt,
+          interval: task.interval,
+          createdAt: task.createdAt
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      const errorMessage = error instanceof Error ? error.message : '服务器内部错误';
+      return reply.status(500).send({
+        message: 1002,
+        detail: errorMessage
+      });
+    }
+  });
+
+  /**
+   * 取消定时任务
+   * DELETE /schedule
+   * Body: { authKey, taskId }
+   */
+  fastify.delete('/schedule', async (request: FastifyRequest<{ Body: CancelScheduleBody }>, reply: FastifyReply): Promise<ApiResponse> => {
+    try {
+      const { authKey, taskId } = request.body || {};
+
+      if (!authKey) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'authKey为必填参数'
+        });
+      }
+
+      if (!taskId) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'taskId为必填参数'
+        });
+      }
+
+      // 验证设备
+      const device = getDeviceByAuthKey(authKey);
+      if (!device) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: '设备不存在'
+        });
+      }
+
+      // 取消任务
+      const success = scheduler.cancelTask(taskId);
+      if (!success) {
+        return reply.status(404).send({
+          message: 1008,
+          detail: '任务不存在'
+        });
+      }
+
+      return {
+        message: 1000,
+        detail: {
+          status: 'cancelled',
+          taskId
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        message: 1002,
+        detail: '服务器内部错误'
+      });
+    }
+  });
+
+  /**
+   * 查询定时任务
+   * GET /schedule?authKey={authKey}
+   * 返回与该设备相关的所有定时任务
+   */
+  fastify.get('/schedule', async (request: FastifyRequest<{ Querystring: QueryScheduleQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
+    try {
+      const { authKey } = request.query;
+
+      if (!authKey) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'authKey为必填参数'
+        });
+      }
+
+      // 验证设备
+      const deviceInfo = deviceCache.getDeviceByAuthKey(authKey) || getDeviceByAuthKey(authKey);
+      if (!deviceInfo) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: '设备不存在'
+        });
+      }
+
+      const clientId = deviceInfo.client_id;
+
+      // 获取所有任务（按设备筛选或获取全部）
+      const tasks = clientId 
+        ? scheduler.getTasksByDevice(clientId)
+        : [];
+
+      // 获取调度器统计信息
+      const stats = scheduler.getStats();
+
+      return {
+        message: 1000,
+        detail: {
+          tasks: tasks.map(t => ({
+            taskId: t.id,
+            deviceId: t.deviceId,
+            command: t.command,
+            mode: t.mode,
+            executeAt: t.executeAt,
+            interval: t.interval,
+            createdAt: t.createdAt,
+            lastExecutedAt: t.lastExecutedAt,
+            enabled: t.enabled
+          })),
+          count: tasks.length,
+          stats
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        message: 1002,
+        detail: '服务器内部错误'
+      });
+    }
+  });
+
+  /**
+   * 修改定时任务
+   * PUT /schedule
+   * Body: { authKey, taskId, command?, mode?, executeAt?, countdown?, interval?, enabled? }
+   */
+  fastify.put('/schedule', async (request: FastifyRequest<{ Body: UpdateScheduleBody }>, reply: FastifyReply): Promise<ApiResponse> => {
+    try {
+      const { authKey, taskId, command, mode, executeAt, countdown, interval, enabled } = request.body || {};
+
+      if (!authKey) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'authKey为必填参数'
+        });
+      }
+
+      if (!taskId) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'taskId为必填参数'
+        });
+      }
+
+      // 验证设备
+      const device = getDeviceByAuthKey(authKey);
+      if (!device) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: '设备不存在'
+        });
+      }
+
+      // 检查任务是否存在
+      const existingTask = scheduler.getTask(taskId);
+      if (!existingTask) {
+        return reply.status(404).send({
+          message: 1008,
+          detail: '任务不存在'
+        });
+      }
+
+      // 校验新模式的参数
+      if (mode) {
+        if (!['scheduled', 'countdown', 'recurring'].includes(mode)) {
+          return reply.status(400).send({
+            message: 1001,
+            detail: 'mode必须是 scheduled、countdown 或 recurring'
+          });
+        }
+
+        if (mode === 'scheduled' && !executeAt && !existingTask.executeAt) {
+          return reply.status(400).send({
+            message: 1001,
+            detail: 'scheduled模式需要executeAt参数'
+          });
+        }
+
+        if (mode === 'countdown' && !countdown) {
+          return reply.status(400).send({
+            message: 1001,
+            detail: 'countdown模式需要countdown参数'
+          });
+        }
+
+        if (mode === 'recurring' && !interval && !existingTask.interval) {
+          return reply.status(400).send({
+            message: 1001,
+            detail: 'recurring模式需要interval参数'
+          });
+        }
+      }
+
+      // 更新任务
+      const updatedTask = scheduler.updateTask(taskId, {
+        command,
+        mode: mode as ScheduleMode | undefined,
+        executeAt,
+        countdown,
+        interval,
+        enabled
+      });
+
+      if (!updatedTask) {
+        return reply.status(500).send({
+          message: 1002,
+          detail: '更新任务失败'
+        });
+      }
+
+      return {
+        message: 1000,
+        detail: {
+          taskId: updatedTask.id,
+          deviceId: updatedTask.deviceId,
+          command: updatedTask.command,
+          mode: updatedTask.mode,
+          executeAt: updatedTask.executeAt,
+          interval: updatedTask.interval,
+          enabled: updatedTask.enabled
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      const errorMessage = error instanceof Error ? error.message : '服务器内部错误';
+      return reply.status(500).send({
+        message: 1002,
+        detail: errorMessage
       });
     }
   });

@@ -11,8 +11,8 @@ import {
   addDeviceToGroup,
   getDeviceStatus
 } from '../src/database';
-import { Device, Group, ApiResponse, AdminCreateDeviceBody, DeviceParams } from '../src/types';
-import { ADMIN_TOKEN } from '../src/config';
+import { Device, Group, ApiResponse, UserCreateDeviceBody, DeviceParams } from '../src/types';
+import { USER_TOKEN } from '../src/config';
 
 /**
  * 判断是否为本地请求
@@ -23,11 +23,11 @@ function isLocalRequest(request: FastifyRequest): boolean {
 }
 
 /**
- * 验证 Admin Token
+ * 验证 User Token
  */
-function verifyAdminToken(request: FastifyRequest, reply: FastifyReply): boolean {
-  // 如果未配置 ADMIN_TOKEN，则不需要验证（开发模式）
-  if (!ADMIN_TOKEN) {
+function verifyUserToken(request: FastifyRequest, reply: FastifyReply): boolean {
+  // 如果未配置 USER_TOKEN，则不需要验证（开发模式）
+  if (!USER_TOKEN) {
     return true;
   }
 
@@ -39,10 +39,10 @@ function verifyAdminToken(request: FastifyRequest, reply: FastifyReply): boolean
   const authHeader = request.headers['authorization'];
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
 
-  if (!token || token !== ADMIN_TOKEN) {
+  if (!token || token !== USER_TOKEN) {
     reply.status(401).send({
       message: 1008,
-      detail: '未授权访问，请提供有效的 Admin Token'
+      detail: '未授权访问，请提供有效的 User Token'
     });
     return false;
   }
@@ -89,7 +89,7 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
       message: 1000,
       detail: {
         status: 'ok',
-        service: 'web-admin',
+        service: 'web-user',
         timestamp: new Date().toISOString()
       }
     };
@@ -97,10 +97,10 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
 
   /**
    * 获取所有设备列表
-   * GET /admin/devices
+   * GET /user/devices
    */
-  fastify.get('/admin/devices', async (request: FastifyRequest, reply: FastifyReply): Promise<ApiResponse | undefined> => {
-    if (!verifyAdminToken(request, reply)) return;
+  fastify.get('/user/devices', async (request: FastifyRequest, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
     
     try {
       const devices = getAllDevices();
@@ -134,10 +134,10 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
 
   /**
    * 获取单个设备详情
-   * GET /admin/device/:uuid
+   * GET /user/device/:uuid
    */
-  fastify.get('/admin/device/:uuid', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
-    if (!verifyAdminToken(request, reply)) return;
+  fastify.get('/user/device/:uuid', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
     
     try {
       const { uuid } = request.params;
@@ -173,11 +173,11 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
   });
 
   /**
-   * 创建设备（管理接口）
-   * POST /admin/device
+   * 创建设备（用户接口）
+   * POST /user/device
    */
-  fastify.post('/admin/device', async (request: FastifyRequest<{ Body: AdminCreateDeviceBody }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
-    if (!verifyAdminToken(request, reply)) return;
+  fastify.post('/user/device', async (request: FastifyRequest<{ Body: UserCreateDeviceBody }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
     
     try {
       const { uuid } = request.body || {};
@@ -225,10 +225,10 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
 
   /**
    * 获取设备连接信息（用于测试）
-   * GET /admin/device/:uuid/connection
+   * GET /user/device/:uuid/connection
    */
-  fastify.get('/admin/device/:uuid/connection', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
-    if (!verifyAdminToken(request, reply)) return;
+  fastify.get('/user/device/:uuid/connection', async (request: FastifyRequest<{ Params: DeviceParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
     
     try {
       const { uuid } = request.params;

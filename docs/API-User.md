@@ -1,36 +1,36 @@
-# 点灯Broker Lite - Web管理接口文档
+# 点灯Broker Lite - Web用户接口文档
 
-Web管理接口，用于设备管理和调试。
+Web用户接口，用于设备管理和调试。用户可通过网页、App请求相关接口。
 
 **基础URL**: `http://localhost:3001`
 
-> **说明**：Web管理接口运行在独立端口（默认3001），与设备端接口分离。
+> **说明**：Web用户接口运行在独立端口（默认3001），与设备端接口分离。
 
 ---
 
 ## 认证
 
-所有 `/admin/*` 接口需要通过 `Authorization` 请求头提供 Admin Token 进行认证。
+所有 `/user/*` 接口需要通过 `Authorization` 请求头提供 User Token 进行认证。
 
 **请求头格式**
 ```
-Authorization: Bearer your_admin_token_here
+Authorization: Bearer your_user_token_here
 ```
 
 或直接传递 Token：
 ```
-Authorization: your_admin_token_here
+Authorization: your_user_token_here
 ```
 
 > **注意**：
-> - Admin Token 在 `.env` 文件中通过 `ADMIN_TOKEN` 配置
-> - 如果未配置 `ADMIN_TOKEN`，则不需要认证（仅建议开发环境使用）
+> - User Token 在 `.env` 文件中通过 `USER_TOKEN` 配置
+> - 如果未配置 `USER_TOKEN`，则不需要认证（仅建议开发环境使用）
 > - 认证失败将返回错误码 1008
 
 ---
 
 ## 目录
-- [管理端健康检查](#管理端健康检查)
+- [健康检查](#健康检查)
 - [获取所有设备](#获取所有设备)
 - [获取设备详情](#获取设备详情)
 - [创建设备](#创建设备)
@@ -39,9 +39,9 @@ Authorization: your_admin_token_here
 
 ---
 
-## 管理端健康检查
+## 健康检查
 
-检查Web管理服务运行状态。（无需认证）
+检查Web用户服务运行状态。（无需认证）
 
 **请求**
 ```
@@ -54,7 +54,7 @@ GET /health
   "message": 1000,
   "detail": {
     "status": "ok",
-    "service": "web-admin",
+    "service": "web-user",
     "timestamp": "2026-01-21T10:00:00.000Z"
   }
 }
@@ -68,8 +68,8 @@ GET /health
 
 **请求**
 ```
-GET /admin/devices
-Authorization: Bearer your_admin_token
+GET /user/devices
+Authorization: Bearer your_user_token
 ```
 
 **响应**
@@ -102,7 +102,7 @@ Authorization: Bearer your_admin_token
 
 **请求**
 ```
-GET /admin/device/:uuid
+GET /user/device/:uuid
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -131,11 +131,11 @@ GET /admin/device/:uuid
 
 ## 创建设备
 
-通过管理接口创建新设备，uuid可选（自动生成）。
+通过用户接口创建新设备，uuid可选（自动生成）。
 
 **请求**
 ```
-POST /admin/device
+POST /user/device
 Content-Type: application/json
 ```
 
@@ -173,7 +173,7 @@ Content-Type: application/json
 
 **请求**
 ```
-GET /admin/device/:uuid/connection
+GET /user/device/:uuid/connection
 ```
 
 | 参数 | 类型 | 必填 | 说明 |
@@ -205,4 +205,4 @@ GET /admin/device/:uuid/connection
 | 1001 | 参数错误 / UUID已存在 |
 | 1002 | 服务器内部错误 |
 | 1003 | 设备不存在 |
-| 1008 | 未授权访问（Admin Token 无效或缺失） |
+| 1008 | 未授权访问（User Token 无效或缺失） |

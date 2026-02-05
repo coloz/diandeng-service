@@ -7,7 +7,7 @@
 | 文档 | 说明 | 基础URL |
 |------|------|---------|
 | [HTTP接口文档](docs/API-HTTP.md) | 设备端HTTP接口，用于设备注册、上线和消息通信 | `http://localhost:3000` |
-| [Web管理接口文档](docs/API-Admin.md) | 管理端接口，用于设备管理和调试 | `http://localhost:3001` |
+| [Web用户接口文档](docs/API-User.md) | 用户接口，用于设备管理和调试，支持网页/App访问 | `http://localhost:3001` |
 | [MQTT接口文档](docs/API-MQTT.md) | MQTT协议接口，用于设备实时消息通信 | `mqtt://localhost:1883` |
 
 ---
@@ -43,7 +43,7 @@ curl "http://localhost:3000/device/auth?authKey=your_auth_key&mode=mqtt"
 | 1005 | 发布频率过高（每秒最多1条） |
 | 1006 | 无权操作该组 |
 | 1007 | 设备未上线或未以HTTP模式上线 |
-| 1008 | 未授权访问（Admin Token 无效） |
+| 1008 | 未授权访问（User Token 无效） |
 
 ---
 

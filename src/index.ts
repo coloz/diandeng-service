@@ -5,6 +5,7 @@ import { initDatabase, markInactiveHttpDevicesOffline } from './database';
 import { setupRoutes } from './routes';
 import { setupBroker } from './broker';
 import { deviceCache } from './cache';
+import { scheduler } from './scheduler';
 import config from './config';
 
 async function main(): Promise<void> {
@@ -18,6 +19,11 @@ async function main(): Promise<void> {
 
   // 设置Broker逻辑
   setupBroker(aedes, deviceCache);
+
+  // 初始化并启动定时任务调度器
+  scheduler.init(aedes, deviceCache);
+  scheduler.start();
+  console.log('定时任务调度器已启动');
 
   // 创建MQTT服务器
   const mqttServer = createServer(aedes.handle);
@@ -60,6 +66,9 @@ async function main(): Promise<void> {
     
     // 清除定时器
     clearInterval(httpStatusTimer);
+    
+    // 停止调度器
+    scheduler.stop();
     
     aedes.close(() => {
       mqttServer.close(() => {

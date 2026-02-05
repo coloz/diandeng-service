@@ -62,7 +62,6 @@ async function main(): Promise<void> {
     clearInterval(httpStatusTimer);
     
     aedes.close(() => {
-      console.log('MQTT Broker 已关闭');
       mqttServer.close(() => {
         console.log('MQTT Server 已关闭');
         fastify.close(() => {

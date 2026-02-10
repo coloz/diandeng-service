@@ -14,7 +14,11 @@ import {
   getBridgeRemoteByBrokerId,
   addBridgeRemote,
   updateBridgeRemote,
-  deleteBridgeRemote
+  deleteBridgeRemote,
+  addBridgeSharedDevice,
+  removeBridgeSharedDevice,
+  getSharedDevicesForBroker,
+  deleteAllBridgeSharedDevices
 } from '../src/database';
 import {
   Device,
@@ -24,7 +28,9 @@ import {
   DeviceParams,
   AddBridgeRemoteBody,
   UpdateBridgeRemoteBody,
-  BrokerParams
+  BrokerParams,
+  AddSharedDeviceBody,
+  SharedDeviceParams
 } from '../src/types';
 import { USER_TOKEN } from '../src/config';
 import config from '../src/config';
@@ -360,6 +366,18 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
 
       addBridgeRemote(brokerId, url, token);
 
+      // 处理可选的共享设备列表
+      const { sharedDevices } = request.body || {} as any;
+      if (sharedDevices && Array.isArray(sharedDevices)) {
+        for (const sd of sharedDevices) {
+          if (!sd.deviceUuid) continue;
+          const device = getDeviceByUuid(sd.deviceUuid);
+          if (device) {
+            addBridgeSharedDevice(brokerId, device.id, sd.permissions || 'readwrite');
+          }
+        }
+      }
+
       // 如果 Bridge 已运行，立即连接新添加的远程 Broker
       if (config.bridge.enabled) {
         bridge.addRemote({ id: brokerId, url, token });
@@ -460,6 +478,9 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
         });
       }
 
+      // 清理关联的共享设备记录
+      deleteAllBridgeSharedDevices(brokerId);
+
       deleteBridgeRemote(brokerId);
 
       // 如果 Bridge 已运行，断开连接
@@ -472,6 +493,210 @@ export function setupWebRoutes(fastify: FastifyInstance): void {
         detail: {
           brokerId,
           status: 'deleted'
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        message: 1002,
+        detail: '服务器内部错误'
+      });
+    }
+  });
+
+  // ========== Bridge 共享设备管理接口 ==========
+
+  /**
+   * 获取与指定远程 Broker 共享的本地设备列表
+   * GET /user/broker/:brokerId/devices
+   */
+  fastify.get('/user/broker/:brokerId/devices', async (request: FastifyRequest<{ Params: BrokerParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
+
+    try {
+      const { brokerId } = request.params;
+
+      const existing = getBridgeRemoteByBrokerId(brokerId);
+      if (!existing) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: `远程 Broker ${brokerId} 不存在`
+        });
+      }
+
+      const sharedDevices = getSharedDevicesForBroker(brokerId);
+
+      return {
+        message: 1000,
+        detail: {
+          brokerId,
+          devices: sharedDevices.map(sd => ({
+            id: sd.id,
+            deviceUuid: sd.uuid,
+            clientId: sd.client_id,
+            permissions: sd.permissions,
+            created_at: sd.created_at
+          })),
+          total: sharedDevices.length
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        message: 1002,
+        detail: '服务器内部错误'
+      });
+    }
+  });
+
+  /**
+   * 添加共享设备
+   * POST /user/broker/:brokerId/devices
+   */
+  fastify.post('/user/broker/:brokerId/devices', async (request: FastifyRequest<{ Params: BrokerParams; Body: AddSharedDeviceBody }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
+
+    try {
+      const { brokerId } = request.params;
+      const { deviceUuid, permissions = 'readwrite' } = request.body || {};
+
+      if (!deviceUuid) {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'deviceUuid 为必填参数'
+        });
+      }
+
+      if (permissions !== 'read' && permissions !== 'readwrite') {
+        return reply.status(400).send({
+          message: 1001,
+          detail: 'permissions 必须为 read 或 readwrite'
+        });
+      }
+
+      const remoteBroker = getBridgeRemoteByBrokerId(brokerId);
+      if (!remoteBroker) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: `远程 Broker ${brokerId} 不存在`
+        });
+      }
+
+      const device = getDeviceByUuid(deviceUuid);
+      if (!device) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: `设备 ${deviceUuid} 不存在`
+        });
+      }
+
+      addBridgeSharedDevice(brokerId, device.id, permissions);
+
+      // 如果 Bridge 已运行，重新同步共享设备列表
+      if (config.bridge.enabled) {
+        bridge.syncSharedDevicesToBroker(brokerId);
+      }
+
+      return {
+        message: 1000,
+        detail: {
+          brokerId,
+          deviceUuid,
+          permissions,
+          status: 'shared'
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        message: 1002,
+        detail: '服务器内部错误'
+      });
+    }
+  });
+
+  /**
+   * 移除共享设备
+   * DELETE /user/broker/:brokerId/devices/:uuid
+   */
+  fastify.delete('/user/broker/:brokerId/devices/:uuid', async (request: FastifyRequest<{ Params: SharedDeviceParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
+
+    try {
+      const { brokerId, uuid } = request.params;
+
+      const remoteBroker = getBridgeRemoteByBrokerId(brokerId);
+      if (!remoteBroker) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: `远程 Broker ${brokerId} 不存在`
+        });
+      }
+
+      const device = getDeviceByUuid(uuid);
+      if (!device) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: `设备 ${uuid} 不存在`
+        });
+      }
+
+      removeBridgeSharedDevice(brokerId, device.id);
+
+      // 如果 Bridge 已运行，重新同步共享设备列表
+      if (config.bridge.enabled) {
+        bridge.syncSharedDevicesToBroker(brokerId);
+      }
+
+      return {
+        message: 1000,
+        detail: {
+          brokerId,
+          deviceUuid: uuid,
+          status: 'unshared'
+        }
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        message: 1002,
+        detail: '服务器内部错误'
+      });
+    }
+  });
+
+  /**
+   * 获取远程 Broker 共享给我的设备列表（通过 Bridge 同步获取）
+   * GET /user/broker/:brokerId/remote-devices
+   */
+  fastify.get('/user/broker/:brokerId/remote-devices', async (request: FastifyRequest<{ Params: BrokerParams }>, reply: FastifyReply): Promise<ApiResponse | undefined> => {
+    if (!verifyUserToken(request, reply)) return;
+
+    try {
+      const { brokerId } = request.params;
+
+      const existing = getBridgeRemoteByBrokerId(brokerId);
+      if (!existing) {
+        return reply.status(404).send({
+          message: 1003,
+          detail: `远程 Broker ${brokerId} 不存在`
+        });
+      }
+
+      const remoteDevices = bridge.getRemoteSharedDevices(brokerId);
+
+      return {
+        message: 1000,
+        detail: {
+          brokerId,
+          devices: remoteDevices.map(d => ({
+            uuid: d.uuid,
+            clientId: d.clientId,
+            permissions: d.permissions,
+            lastData: d.lastData || null,
+            lastDataAt: d.lastDataAt || null
+          })),
+          total: remoteDevices.length
         }
       };
     } catch (error) {

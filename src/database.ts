@@ -1,6 +1,7 @@
 import Database, { Statement, Database as BetterSqlite3Database, RunResult } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { Device, Group, BridgeRemote } from './types';
 
 let db: BetterSqlite3Database | null = null;
@@ -118,6 +119,19 @@ export function initDatabase(): BetterSqlite3Database {
     )
   `);
 
+  // 创建 Bridge 共享设备表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bridge_shared_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      broker_id TEXT NOT NULL,
+      device_id INTEGER NOT NULL,
+      permissions TEXT DEFAULT 'readwrite',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (device_id) REFERENCES devices(id),
+      UNIQUE(broker_id, device_id)
+    )
+  `);
+
   // 创建索引
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_devices_auth_key ON devices(auth_key);
@@ -127,9 +141,23 @@ export function initDatabase(): BetterSqlite3Database {
     CREATE INDEX IF NOT EXISTS idx_device_groups_group_id ON device_groups(group_id);
     CREATE INDEX IF NOT EXISTS idx_device_status_device_id ON device_status(device_id);
     CREATE INDEX IF NOT EXISTS idx_device_status_status ON device_status(status);
+    CREATE INDEX IF NOT EXISTS idx_bridge_shared_devices_broker ON bridge_shared_devices(broker_id);
+    CREATE INDEX IF NOT EXISTS idx_bridge_shared_devices_device ON bridge_shared_devices(device_id);
   `);
 
   console.log('数据库表结构初始化完成');
+
+  // 首次初始化：检查是否有设备，如果没有则创建一个默认设备
+  const deviceCount = db.prepare('SELECT COUNT(*) as count FROM devices').get() as { count: number };
+  if (deviceCount.count === 0) {
+    const defaultUuid = crypto.randomBytes(16).toString('hex').slice(0, 16);
+    const defaultAuthKey = crypto.randomBytes(16).toString('hex').slice(0, 16);
+    db.prepare('INSERT INTO devices (uuid, auth_key) VALUES (?, ?)').run(defaultUuid, defaultAuthKey);
+    console.log('首次初始化：已创建默认设备');
+    console.log(`  UUID: ${defaultUuid}`);
+    console.log(`  AuthKey: ${defaultAuthKey}`);
+  }
+
   return db;
 }
 
@@ -468,4 +496,95 @@ export function deleteBridgeRemote(brokerId: string): RunResult {
     DELETE FROM bridge_remotes WHERE broker_id = ?
   `);
   return stmt.run(brokerId);
+}
+
+// ========== Bridge 共享设备 CRUD ==========
+
+/**
+ * 通过 ID 获取设备
+ */
+export function getDeviceById(id: number): Device | undefined {
+  const stmt = getStmt('getDeviceById', 'SELECT * FROM devices WHERE id = ?');
+  return stmt.get(id) as Device | undefined;
+}
+
+/**
+ * 添加共享设备记录
+ */
+export function addBridgeSharedDevice(brokerId: string, deviceId: number, permissions: string = 'readwrite'): RunResult {
+  const stmt = getStmt('addBridgeSharedDevice', `
+    INSERT OR IGNORE INTO bridge_shared_devices (broker_id, device_id, permissions) VALUES (?, ?, ?)
+  `);
+  return stmt.run(brokerId, deviceId, permissions);
+}
+
+/**
+ * 移除共享设备记录
+ */
+export function removeBridgeSharedDevice(brokerId: string, deviceId: number): RunResult {
+  const stmt = getStmt('removeBridgeSharedDevice', `
+    DELETE FROM bridge_shared_devices WHERE broker_id = ? AND device_id = ?
+  `);
+  return stmt.run(brokerId, deviceId);
+}
+
+/**
+ * 获取指定 Broker 的共享设备列表（带设备信息）
+ */
+export function getSharedDevicesForBroker(brokerId: string): Array<{ id: number; broker_id: string; device_id: number; permissions: string; created_at: string; uuid: string; client_id: string | null }> {
+  const stmt = getStmt('getSharedDevicesForBroker', `
+    SELECT bsd.*, d.uuid, d.client_id
+    FROM bridge_shared_devices bsd
+    INNER JOIN devices d ON d.id = bsd.device_id
+    WHERE bsd.broker_id = ?
+    ORDER BY bsd.created_at ASC
+  `);
+  return stmt.all(brokerId) as Array<{ id: number; broker_id: string; device_id: number; permissions: string; created_at: string; uuid: string; client_id: string | null }>;
+}
+
+/**
+ * 删除指定 Broker 的所有共享设备记录
+ */
+export function deleteAllBridgeSharedDevices(brokerId: string): RunResult {
+  const stmt = getStmt('deleteAllBridgeSharedDevices', `
+    DELETE FROM bridge_shared_devices WHERE broker_id = ?
+  `);
+  return stmt.run(brokerId);
+}
+
+/**
+ * 获取设备被共享给了哪些 Broker
+ */
+export function getSharedBrokerIdsForDevice(deviceId: number): string[] {
+  const stmt = getStmt('getSharedBrokerIdsForDevice', `
+    SELECT broker_id FROM bridge_shared_devices WHERE device_id = ?
+  `);
+  return (stmt.all(deviceId) as Array<{ broker_id: string }>).map(r => r.broker_id);
+}
+
+/**
+ * Bridge 设备访问控制检查
+ * 返回值:
+ *   'all'       - 无 ACL 记录，允许所有访问（向下兼容）
+ *   'readwrite' - 有读写权限
+ *   'read'      - 仅有只读权限
+ *   'none'      - 未授权
+ */
+export function checkBridgeDeviceAccess(targetClientId: string, fromBrokerId: string): 'none' | 'all' | 'read' | 'readwrite' {
+  const countStmt = getStmt('countSharedDevicesForBroker', `
+    SELECT COUNT(*) as count FROM bridge_shared_devices WHERE broker_id = ?
+  `);
+  const { count } = countStmt.get(fromBrokerId) as { count: number };
+
+  // 无 ACL 记录 → 不做限制（向下兼容）
+  if (count === 0) return 'all';
+
+  // 有 ACL 记录 → 检查具体设备
+  const permStmt = getStmt('getDeviceSharePermission', `
+    SELECT bsd.permissions FROM bridge_shared_devices bsd
+    INNER JOIN devices d ON d.id = bsd.device_id
+    WHERE bsd.broker_id = ? AND d.client_id = ?
+  `);
+  const result = permStmt.get(fromBrokerId, targetClientId) as { permissions: string } | undefined;
+  return result ? (result.permissions as 'read' | 'readwrite') : 'none';
 }

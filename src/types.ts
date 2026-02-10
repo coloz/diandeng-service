@@ -99,6 +99,44 @@ export interface BridgeGroupMessage {
 }
 
 /**
+ * Bridge 共享设备数据库记录
+ */
+export interface BridgeSharedDevice {
+  id: number;
+  broker_id: string;     // 远程 broker ID
+  device_id: number;     // 本地 devices.id
+  permissions: string;   // 'read' | 'readwrite'
+  created_at: string;
+}
+
+/**
+ * 共享设备信息（同步用）
+ */
+export interface BridgeSharedDeviceInfo {
+  uuid: string;
+  clientId: string | null;
+  permissions: string;
+}
+
+/**
+ * Bridge 共享同步消息
+ */
+export interface BridgeShareSyncMessage {
+  fromBroker: string;
+  devices: BridgeSharedDeviceInfo[];
+}
+
+/**
+ * Bridge 共享数据推送消息
+ */
+export interface BridgeShareDataMessage {
+  fromBroker: string;
+  fromDevice: string;    // clientId
+  deviceUuid: string;    // uuid
+  data: unknown;
+}
+
+/**
  * 暂存消息接口
  */
 export interface PendingMessage {
@@ -249,6 +287,7 @@ export interface AddBridgeRemoteBody {
   brokerId: string;     // 远程 broker ID
   url: string;          // mqtt://host:port
   token: string;        // bridge token
+  sharedDevices?: Array<{ deviceUuid: string; permissions?: string }>;  // 可选：同时共享本地设备
 }
 
 /**
@@ -265,6 +304,22 @@ export interface UpdateBridgeRemoteBody {
  */
 export interface BrokerParams {
   brokerId: string;
+}
+
+/**
+ * 添加共享设备请求体
+ */
+export interface AddSharedDeviceBody {
+  deviceUuid: string;
+  permissions?: string;   // 'read' | 'readwrite', 默认 'readwrite'
+}
+
+/**
+ * 共享设备路由参数
+ */
+export interface SharedDeviceParams {
+  brokerId: string;
+  uuid: string;
 }
 
 /**

@@ -293,6 +293,17 @@ export function setupBroker(aedes: Aedes, deviceCache: IDeviceCache): void {
    */
   aedes.on('subscribe', (subscriptions: Subscription[], client: AedesClient) => {
     logger.subscribe(`${client.id} 订阅了: ${subscriptions.map(s => s.topic).join(', ')}`);
+
+    // Bridge 客户端订阅 share topic 后，同步共享设备列表
+    if (isBridgeClient(client.id)) {
+      const hasShareSub = subscriptions.some(s => s.topic.startsWith('/bridge/share/'));
+      if (hasShareSub) {
+        const remoteBrokerId = client.id.substring(BRIDGE_CLIENT_PREFIX.length);
+        if (remoteBrokerId) {
+          bridge.syncSharedDevicesToBroker(remoteBrokerId);
+        }
+      }
+    }
   });
 
   /**
@@ -371,6 +382,11 @@ function handleDeviceMessage(
   if (!toDevice || !data) {
     logger.forward('消息格式错误，缺少toDevice或data');
     return;
+  }
+
+  // 共享设备数据推送：如果发送方设备被共享，推送数据到相关 Broker
+  if (config.bridge.enabled) {
+    bridge.pushShareDataIfNeeded(client.id, data);
   }
 
   // 检查是否是跨 Broker 消息（格式: brokerId:clientId）

@@ -176,6 +176,8 @@ Bridge 客户端连接远程 Broker 时使用：
 |-------|------|------|
 | `/bridge/device/{clientId}` | 入站 | 投递设备消息到本地设备 |
 | `/bridge/group/{groupName}` | 入站 | 投递组消息到本地组 |
+| `/bridge/share/sync/{brokerId}` | 出站 | 同步共享设备列表到指定远程 Broker |
+| `/bridge/share/data/{brokerId}/{clientId}` | 出站 | 推送共享设备数据到指定远程 Broker |
 
 ### 消息格式
 
@@ -207,3 +209,74 @@ Bridge 客户端连接远程 Broker 时使用：
 2. Bridge 客户端只能操作 `/bridge/` 命名空间的 topic，无法访问设备或组的常规 topic
 3. 每个 Broker 使用独立的 `BRIDGE_TOKEN`，建议使用强随机字符串
 4. 建议在生产环境中使用 `mqtts://`（TLS）连接远程 Broker
+5. 设备共享采用 ACL 白名单机制，未添加共享设备记录时不做限制（向下兼容），添加后仅允许白名单内的设备被远程 Broker 访问
+
+## 设备共享
+
+### 概述
+
+设备共享基于 Bridge 连接实现，通过在 `/user/broker` 接口上扩展共享设备管理，无需引入独立的分享系统。核心机制：
+
+- **ACL 白名单**：为远程 Broker 配置允许访问的本地设备列表
+- **自动同步**：远程 Broker 的 Bridge 客户端连接后，自动同步共享设备列表
+- **数据推送**：共享设备产生数据时，自动推送到已配置的远程 Broker
+- **向下兼容**：未配置共享设备时，所有设备均可通过 Bridge 访问（保持原有行为）
+
+### 添加远程 Broker 并共享设备（一步完成）
+
+```bash
+curl -X POST http://localhost:3001/user/broker \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_user_token" \
+  -d '{
+    "brokerId": "broker-b",
+    "url": "mqtt://192.168.1.100:1883",
+    "token": "broker_b_的_BRIDGE_TOKEN",
+    "sharedDevices": [
+      { "deviceUuid": "smart-light-01", "permissions": "readwrite" },
+      { "deviceUuid": "sensor-01", "permissions": "read" }
+    ]
+  }'
+```
+
+### 管理共享设备
+
+**查看共享设备列表：**
+```bash
+GET /user/broker/:brokerId/devices
+```
+
+**添加共享设备：**
+```bash
+POST /user/broker/:brokerId/devices
+Body: { "deviceUuid": "smart-light-01", "permissions": "readwrite" }
+```
+
+**移除共享设备：**
+```bash
+DELETE /user/broker/:brokerId/devices/:uuid
+```
+
+### 查看对方共享给我的设备
+
+```bash
+GET /user/broker/:brokerId/remote-devices
+```
+
+返回通过 Bridge 同步获取的远程共享设备列表，包含设备 UUID、clientId、权限和最新数据。
+
+### 权限说明
+
+| 权限 | 说明 |
+|------|------|
+| `readwrite` | 远程 Broker 可以向该设备发送命令，也可接收设备数据推送 |
+| `read` | 远程 Broker 仅可接收设备数据推送，无法发送命令 |
+
+### 工作流程
+
+1. **用户 A** 通过 `/user/broker` 添加用户 B 的 Broker，并指定共享设备
+2. **用户 B** 通过 `/user/broker` 添加用户 A 的 Broker（建立 Bridge 连接）
+3. B 的 Bridge 客户端连接到 A 后，自动收到共享设备列表同步
+4. B 通过 `/user/broker/broker-a/remote-devices` 查看 A 共享的设备
+5. B 的 App 使用 `brokerId:clientId` 寻址直接与 A 的共享设备通信
+6. A 的共享设备产生数据时，自动推送到 B（B 通过 `remote-devices` 接口获取最新数据）

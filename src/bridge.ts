@@ -20,10 +20,10 @@
 import mqtt, { MqttClient } from 'mqtt';
 import Aedes, { PublishPacket } from 'aedes';
 import config from './config';
-import { BridgeRemoteConfig, BridgeMessage, BridgeGroupMessage, ForwardMessage, IDeviceCache } from './types';
+import { BridgeRemoteConfig, BridgeMessage, BridgeGroupMessage, BridgeShareSyncMessage, BridgeShareDataMessage, ForwardMessage, IDeviceCache } from './types';
 import { logger } from './logger';
-import { stringifyBridgeMessage, stringifyBridgeGroupMessage, stringifyForwardMessage, stringifyGroupForwardMessage } from './serializer';
-import { getEnabledBridgeRemotes } from './database';
+import { stringifyBridgeMessage, stringifyBridgeGroupMessage, stringifyForwardMessage, stringifyGroupForwardMessage, stringifyBridgeShareSyncMessage, stringifyBridgeShareDataMessage } from './serializer';
+import { getEnabledBridgeRemotes, getSharedDevicesForBroker, checkBridgeDeviceAccess, getSharedBrokerIdsForDevice, getDeviceByClientId as dbGetDeviceByClientId } from './database';
 
 /** Bridge 客户端 ID 前缀 */
 export const BRIDGE_CLIENT_PREFIX = '__bridge_';
@@ -31,6 +31,8 @@ export const BRIDGE_CLIENT_PREFIX = '__bridge_';
 /** Bridge topic 正则 */
 const BRIDGE_DEVICE_TOPIC_REGEX = /^\/bridge\/device\/([^/]+)$/;
 const BRIDGE_GROUP_TOPIC_REGEX = /^\/bridge\/group\/([^/]+)$/;
+const BRIDGE_SHARE_SYNC_REGEX = /^\/bridge\/share\/sync\/([^/]+)$/;
+const BRIDGE_SHARE_DATA_REGEX = /^\/bridge\/share\/data\/([^/]+)\/([^/]+)$/;
 
 /**
  * 解析远程设备地址
@@ -63,6 +65,17 @@ interface RemoteConnection {
 }
 
 /**
+ * 远程共享设备信息（从远程 Broker 同步过来的）
+ */
+interface RemoteSharedDeviceEntry {
+  uuid: string;
+  clientId: string | null;
+  permissions: string;
+  lastData?: unknown;
+  lastDataAt?: string;
+}
+
+/**
  * Bridge 管理器
  * 管理所有到远程 Broker 的连接，处理跨 broker 消息收发
  */
@@ -70,6 +83,7 @@ class BridgeManager {
   private aedes: Aedes | null = null;
   private deviceCache: IDeviceCache | null = null;
   private remotes: Map<string, RemoteConnection> = new Map();
+  private remoteSharedDevices: Map<string, RemoteSharedDeviceEntry[]> = new Map();
   private started = false;
 
   /**
@@ -278,6 +292,90 @@ class BridgeManager {
     this.loadAndConnectRemotes();
   }
 
+  // ========== 共享设备方法 ==========
+
+  /**
+   * 同步共享设备列表到指定远程 Broker
+   * 当远程 bridge 客户端连接到本地 broker 并订阅 share topic 后调用
+   */
+  syncSharedDevicesToBroker(remoteBrokerId: string): void {
+    if (!this.aedes) return;
+
+    const sharedDevices = getSharedDevicesForBroker(remoteBrokerId);
+
+    const devices = sharedDevices.map(sd => ({
+      uuid: sd.uuid,
+      clientId: sd.client_id,
+      permissions: sd.permissions
+    }));
+
+    const msg = stringifyBridgeShareSyncMessage({
+      fromBroker: config.bridge.brokerId,
+      devices
+    });
+
+    const topic = `/bridge/share/sync/${remoteBrokerId}`;
+    this.aedes.publish({
+      topic,
+      payload: Buffer.from(msg),
+      qos: 0,
+      retain: false,
+      cmd: 'publish',
+      dup: false
+    } as PublishPacket, (error: Error | undefined) => {
+      if (error) {
+        logger.bridge(`[BRIDGE] 同步共享设备到 ${remoteBrokerId} 失败: ${error.message}`);
+      } else {
+        logger.bridge(`[BRIDGE] 已同步 ${devices.length} 个共享设备到 ${remoteBrokerId}`);
+      }
+    });
+  }
+
+  /**
+   * 如果设备有共享记录，推送数据到相关 Broker
+   * 在本地 Aedes 上发布 /bridge/share/data/{brokerId}/{clientId}
+   * 远程 bridge 客户端通过订阅接收
+   */
+  pushShareDataIfNeeded(clientId: string, data: unknown): void {
+    if (!this.aedes) return;
+
+    const device = dbGetDeviceByClientId(clientId);
+    if (!device) return;
+
+    const brokerIds = getSharedBrokerIdsForDevice(device.id);
+    if (brokerIds.length === 0) return;
+
+    for (const brokerId of brokerIds) {
+      const topic = `/bridge/share/data/${brokerId}/${clientId}`;
+      const msg = stringifyBridgeShareDataMessage({
+        fromBroker: config.bridge.brokerId,
+        fromDevice: clientId,
+        deviceUuid: device.uuid,
+        data
+      });
+
+      this.aedes.publish({
+        topic,
+        payload: Buffer.from(msg),
+        qos: 0,
+        retain: false,
+        cmd: 'publish',
+        dup: false
+      } as PublishPacket, (error: Error | undefined) => {
+        if (error) {
+          logger.bridge(`[BRIDGE] 推送共享数据到 ${brokerId} 失败: ${error.message}`);
+        }
+      });
+    }
+  }
+
+  /**
+   * 获取从远程 Broker 同步过来的共享设备列表
+   */
+  getRemoteSharedDevices(brokerId: string): RemoteSharedDeviceEntry[] {
+    return this.remoteSharedDevices.get(brokerId) || [];
+  }
+
   // ========== 私有方法 ==========
 
   /**
@@ -346,7 +444,12 @@ class BridgeManager {
       console.log(`[BRIDGE] 已连接远程 Broker: ${remote.id}`);
 
       // 订阅 bridge topic（接收远程 broker 转发给我们的消息）
-      client.subscribe(['/bridge/device/+', '/bridge/group/+'], { qos: 0 }, (error) => {
+      client.subscribe([
+        '/bridge/device/+',
+        '/bridge/group/+',
+        `/bridge/share/sync/${config.bridge.brokerId}`,
+        `/bridge/share/data/${config.bridge.brokerId}/+`
+      ], { qos: 0 }, (error) => {
         if (error) {
           console.error(`[BRIDGE] 订阅 ${remote.id} bridge topic 失败:`, error.message);
         } else {
@@ -439,6 +542,23 @@ class BridgeManager {
         this.deliverToLocalGroup(msg.fromBroker, msg.fromDevice, targetGroup, msg.data);
         return;
       }
+
+      // 处理共享同步消息
+      const syncMatch = topic.match(BRIDGE_SHARE_SYNC_REGEX);
+      if (syncMatch) {
+        const msg = JSON.parse(payloadStr) as BridgeShareSyncMessage;
+        this.handleShareSync(remoteBrokerId, msg);
+        return;
+      }
+
+      // 处理共享数据推送
+      const dataMatch = topic.match(BRIDGE_SHARE_DATA_REGEX);
+      if (dataMatch) {
+        const deviceClientId = dataMatch[2]!;
+        const msg = JSON.parse(payloadStr) as BridgeShareDataMessage;
+        this.handleShareData(remoteBrokerId, deviceClientId, msg);
+        return;
+      }
     } catch (error) {
       logger.error(`[BRIDGE] 解析远程消息失败: ${(error as Error).message}`);
     }
@@ -467,10 +587,49 @@ class BridgeManager {
   }
 
   /**
+   * 处理共享设备列表同步消息（从远程 Broker 收到）
+   */
+  private handleShareSync(remoteBrokerId: string, msg: BridgeShareSyncMessage): void {
+    this.remoteSharedDevices.set(remoteBrokerId, msg.devices.map(d => ({
+      uuid: d.uuid,
+      clientId: d.clientId,
+      permissions: d.permissions
+    })));
+    logger.bridge(`[BRIDGE] 收到来自 ${remoteBrokerId} 的共享设备列表: ${msg.devices.length} 个设备`);
+  }
+
+  /**
+   * 处理共享设备数据推送消息（从远程 Broker 收到）
+   */
+  private handleShareData(remoteBrokerId: string, clientId: string, msg: BridgeShareDataMessage): void {
+    const devices = this.remoteSharedDevices.get(remoteBrokerId);
+    if (!devices) return;
+
+    const device = devices.find(d => d.clientId === clientId || d.uuid === msg.deviceUuid);
+    if (device) {
+      device.lastData = msg.data;
+      device.lastDataAt = new Date().toISOString();
+      device.clientId = clientId; // 更新 clientId（可能因重新认证变化）
+      logger.bridge(`[BRIDGE] 收到 ${remoteBrokerId} 共享设备 ${msg.deviceUuid} 的数据更新`);
+    }
+  }
+
+  /**
    * 投递消息到本地设备
    */
   private deliverToLocalDevice(fromBroker: string, fromDevice: string, targetClientId: string, data: unknown): void {
     if (!this.aedes || !this.deviceCache) return;
+
+    // ACL 检查：如果该远程 Broker 配置了共享设备白名单，验证目标设备是否在授权列表中
+    const access = checkBridgeDeviceAccess(targetClientId, fromBroker);
+    if (access === 'none') {
+      logger.forward(`[BRIDGE] 设备 ${targetClientId} 未授权给 ${fromBroker}，拒绝投递`);
+      return;
+    }
+    if (access === 'read') {
+      logger.forward(`[BRIDGE] 设备 ${targetClientId} 对 ${fromBroker} 仅有只读权限，拒绝投递指令`);
+      return;
+    }
 
     const forwardMessage: ForwardMessage = {
       fromDevice: `${fromBroker}:${fromDevice}`,

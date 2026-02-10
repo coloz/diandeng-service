@@ -6,10 +6,11 @@
 
 | 文档 | 说明 | 基础URL |
 |------|------|---------|
-| [HTTP接口文档](docs/API-HTTP.md) | 设备端HTTP接口，用于设备注册、上线和消息通信 | `http://localhost:3000` |
-| [Web用户接口文档](docs/API-User.md) | 用户接口，用于设备管理和调试，支持网页/App访问 | `http://localhost:3001` |
-| [MQTT接口文档](docs/API-MQTT.md) | MQTT协议接口，用于设备实时消息通信 | `mqtt://localhost:1883` |
-| [Bridge桥接文档](docs/API-Bridge.md) | 跨Broker通信，实现多Broker之间设备互联 | - |
+| [Web用户接口文档](API-User.md) | 用户接口，用于设备管理和调试，支持网页/App访问 | `http://localhost:3001` |
+| [HTTP接口文档](API-HTTP.md) | 设备端HTTP接口，用于设备注册、上线和消息通信 | `http://localhost:3000` |
+| [MQTT接口文档](API-MQTT.md) | MQTT协议接口，用于设备实时消息通信 | `mqtt://localhost:1883` |
+| [定时任务接口文档](API-Schedule.md) | 定时任务HTTP接口，支持定时执行、倒计时、循环执行 | `http://localhost:3000` |
+| [Bridge桥接文档](API-Bridge.md) | 跨Broker通信，实现多Broker之间设备互联 | - |
 
 ---
 

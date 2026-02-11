@@ -28,9 +28,9 @@ import { getEnabledBridgeRemotes, getSharedDevicesForBroker, checkBridgeDeviceAc
 /** Bridge 客户端 ID 前缀 */
 export const BRIDGE_CLIENT_PREFIX = '__bridge_';
 
-/** Bridge topic 正则 */
-const BRIDGE_DEVICE_TOPIC_REGEX = /^\/bridge\/device\/([^/]+)$/;
-const BRIDGE_GROUP_TOPIC_REGEX = /^\/bridge\/group\/([^/]+)$/;
+/** Bridge topic 正则（从 bridge 模块统一导出，broker.ts 复用） */
+export const BRIDGE_DEVICE_TOPIC_REGEX = /^\/bridge\/device\/([^/]+)$/;
+export const BRIDGE_GROUP_TOPIC_REGEX = /^\/bridge\/group\/([^/]+)$/;
 const BRIDGE_SHARE_SYNC_REGEX = /^\/bridge\/share\/sync\/([^/]+)$/;
 const BRIDGE_SHARE_DATA_REGEX = /^\/bridge\/share\/data\/([^/]+)\/([^/]+)$/;
 
@@ -111,9 +111,6 @@ class BridgeManager {
     this.started = true;
 
     console.log(`[BRIDGE] 启动 Bridge，本地 brokerId: ${config.bridge.brokerId}`);
-
-    // 监听本地 Aedes 上的 bridge topic（来自远程 broker 的消息）
-    this.setupLocalBridgeListener();
 
     // 从数据库加载已启用的远程 Broker 并连接
     this.loadAndConnectRemotes();
@@ -500,18 +497,6 @@ class BridgeManager {
       logger.forward(`[BRIDGE] 正在重连远程 Broker: ${conn.config.id}`);
       this.doConnect(conn);
     }, config.bridge.reconnectInterval);
-  }
-
-  /**
-   * 监听本地 Aedes 上的 bridge topic
-   * 当远程 broker 的 bridge 客户端发布到 /bridge/device/xxx 或 /bridge/group/xxx 时触发
-   */
-  private setupLocalBridgeListener(): void {
-    if (!this.aedes) return;
-
-    // Aedes 的 publish 事件会捕获所有发布的消息，包括 bridge 客户端发布的
-    // bridge 消息在 broker.ts 的 publish 事件中处理
-    // 这里不需要额外监听，由 broker.ts 中调用 bridge.handleIncomingBridgeMessage 处理
   }
 
   /**

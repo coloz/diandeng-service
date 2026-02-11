@@ -4,13 +4,12 @@ import config from './config';
 import { Device, ForwardMessage, IDeviceCache } from './types';
 import { logger } from './logger';
 import { stringifyForwardMessage, stringifyGroupForwardMessage } from './serializer';
-import { bridge, isBridgeClient, parseRemoteAddress, BRIDGE_CLIENT_PREFIX } from './bridge';
+import { bridge, isBridgeClient, parseRemoteAddress, BRIDGE_CLIENT_PREFIX, BRIDGE_DEVICE_TOPIC_REGEX, BRIDGE_GROUP_TOPIC_REGEX } from './bridge';
 
 // 预编译的正则表达式（避免每次调用时重新创建）
 const DEVICE_TOPIC_REGEX = /^\/device\/([^/]+)\/(s|r)$/;
 const GROUP_TOPIC_REGEX = /^\/group\/([^/]+)\/(s|r)$/;
-const BRIDGE_DEVICE_TOPIC_REGEX = /^\/bridge\/device\/([^/]+)$/;
-const BRIDGE_GROUP_TOPIC_REGEX = /^\/bridge\/group\/([^/]+)$/;
+// BRIDGE_DEVICE_TOPIC_REGEX, BRIDGE_GROUP_TOPIC_REGEX 从 bridge.ts 导入
 
 interface DeviceMessage {
   toDevice?: string;

@@ -9,6 +9,7 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { parse as dotenvParse } from 'dotenv';
 
 // 版本信息
 const VERSION = '1.0.0';
@@ -259,38 +260,36 @@ function ensureBridgeConfig(): void {
     envContent = fs.readFileSync(envPath, 'utf-8');
   }
 
+  const parsed = dotenvParse(envContent);
   let modified = false;
-  const lines = envContent.split('\n');
+  const additions: string[] = [];
 
   // 检查是否已有 BROKER_ID
-  const hasBrokerId = lines.some(line => line.trim().startsWith('BROKER_ID=') && line.split('=')[1]?.trim());
-  if (!hasBrokerId) {
+  if (!parsed.BROKER_ID) {
     const brokerId = `broker-${crypto.randomBytes(8).toString('hex')}`;
-    lines.push(`BROKER_ID=${brokerId}`);
+    additions.push(`BROKER_ID=${brokerId}`);
     log(`  🔑 已生成 BROKER_ID: ${brokerId}`, colors.green);
     modified = true;
   }
 
   // 检查是否已有 BRIDGE_TOKEN
-  const hasBridgeToken = lines.some(line => line.trim().startsWith('BRIDGE_TOKEN=') && line.split('=')[1]?.trim());
-  if (!hasBridgeToken) {
+  if (!parsed.BRIDGE_TOKEN) {
     const bridgeToken = crypto.randomBytes(32).toString('hex');
-    lines.push(`BRIDGE_TOKEN=${bridgeToken}`);
+    additions.push(`BRIDGE_TOKEN=${bridgeToken}`);
     log(`  🔑 已生成 BRIDGE_TOKEN`, colors.green);
     modified = true;
   }
 
   // 检查是否已有 BRIDGE_ENABLED
-  const hasBridgeEnabled = lines.some(line => line.trim().startsWith('BRIDGE_ENABLED='));
-  if (!hasBridgeEnabled) {
-    lines.push(`BRIDGE_ENABLED=true`);
+  if (!parsed.BRIDGE_ENABLED) {
+    additions.push(`BRIDGE_ENABLED=true`);
     log(`  ✅ 已启用 BRIDGE_ENABLED=true`, colors.green);
     modified = true;
   }
 
   if (modified) {
-    // 过滤空行尾部，保持整洁
-    const finalContent = lines.filter((line, i) => i < lines.length - 1 || line.trim() !== '').join('\n') + '\n';
+    const trimmed = envContent.trimEnd();
+    const finalContent = (trimmed ? trimmed + '\n' : '') + additions.join('\n') + '\n';
     fs.writeFileSync(envPath, finalContent, 'utf-8');
     log(`  📝 Bridge 配置已写入 .env`, colors.green);
   }

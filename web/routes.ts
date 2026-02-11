@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import {
   getAllDevices,
@@ -38,6 +37,7 @@ import {
 import { USER_TOKEN } from '../src/config';
 import config from '../src/config';
 import { bridge } from '../src/bridge';
+import { generateRandomString, generateAuthKey, generateClientId, generatePassword } from '../src/utils';
 
 /**
  * 判断是否为本地请求
@@ -76,38 +76,19 @@ function verifyUserToken(request: FastifyRequest, reply: FastifyReply): boolean 
 }
 
 /**
- * 生成随机字符串
- */
-function generateRandomString(length: number = 32): string {
-  return crypto.randomBytes(length).toString('hex').slice(0, length);
-}
-
-/**
- * 生成authKey
- */
-function generateAuthKey(): string {
-  return generateRandomString(16);
-}
-
-/**
- * 生成clientId
- */
-function generateClientId(): string {
-  return generateRandomString(16);
-}
-
-/**
- * 生成密码
- */
-function generatePassword(): string {
-  return generateRandomString(16);
-}
-
-/**
  * 设置Web管理路由
  */
 export function setupWebRoutes(fastify: FastifyInstance): void {
   
+  // 统一错误处理
+  fastify.setErrorHandler((error, _request, reply) => {
+    reply.log.error(error);
+    reply.status(500).send({
+      message: 1002,
+      detail: '服务器内部错误'
+    });
+  });
+
   // 健康检查（不需要认证）
   fastify.get('/health', async (_request: FastifyRequest, _reply: FastifyReply): Promise<ApiResponse> => {
     return {

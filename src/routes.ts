@@ -1,5 +1,7 @@
-import crypto from 'crypto';
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import config from './config';
+import { stringifyApiResponse } from './serializer';
+import { generateAuthKey, generateClientId, generatePassword } from './utils';
 import {
   createDevice,
   getDeviceByAuthKey,
@@ -32,38 +34,25 @@ import { logger } from './logger';
 import { scheduler } from './scheduler';
 
 /**
- * 生成随机字符串
- */
-function generateRandomString(length: number = 32): string {
-  return crypto.randomBytes(length).toString('hex').slice(0, length);
-}
-
-/**
- * 生成authKey
- */
-function generateAuthKey(): string {
-  return generateRandomString(16);
-}
-
-/**
- * 生成clientId
- */
-function generateClientId(): string {
-  return generateRandomString(16);
-}
-
-/**
- * 生成密码
- */
-function generatePassword(): string {
-  return generateRandomString(16);
-}
-
-/**
  * 设置HTTP路由
  */
 export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache): void {
   
+  // 使用预编译序列化器加速 JSON 响应
+  fastify.setReplySerializer((payload) => {
+    if (typeof payload === 'string') return payload;
+    return stringifyApiResponse(payload as Record<string, unknown>);
+  });
+
+  // 统一错误处理，路由无需单独 try/catch
+  fastify.setErrorHandler((error, _request, reply) => {
+    reply.log.error(error);
+    reply.status(500).send({
+      message: 1002,
+      detail: '服务器内部错误'
+    });
+  });
+
   // 健康检查
   fastify.get('/health', async (_request: FastifyRequest, _reply: FastifyReply): Promise<ApiResponse> => {
     const stats = deviceCache.getStats();
@@ -83,7 +72,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * Body: { uuid, token }
    */
   fastify.post('/device/auth', async (request: FastifyRequest<{ Body: DeviceAuthBody }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { uuid } = request.body || {};
 
       if (!uuid) {
@@ -124,13 +112,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           authKey: authKey
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -139,7 +120,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * mode: mqtt(默认) | http
    */
   fastify.get('/device/auth', async (request: FastifyRequest<{ Querystring: DeviceAuthQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey, mode = 'mqtt' } = request.query;
 
       if (!authKey) {
@@ -222,13 +202,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           uuid: device.uuid
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -237,7 +210,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * Body: { authKey, toDevice, data } 或 { authKey, toGroup, data }
    */
   fastify.post('/device/s', async (request: FastifyRequest<{ Body: DevicePublishBody }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey, toDevice, toGroup, data } = request.body || {};
 
       if (!authKey) {
@@ -299,10 +271,10 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
 
       // 检查消息长度限制（限制机制4）
       const messageStr = typeof data === 'string' ? data : JSON.stringify(data);
-      if (messageStr.length > 1024) {
+      if (messageStr.length > config.message.maxLength) {
         return reply.status(400).send({
           message: 1004,
-          detail: '消息长度不能大于1024'
+          detail: `消息长度不能大于${config.message.maxLength}`
         });
       }
 
@@ -359,13 +331,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           status: 'published'
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -374,7 +339,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * 获取后清除暂存的消息
    */
   fastify.get('/device/r', async (request: FastifyRequest<{ Querystring: DeviceSubscribeQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey } = request.query;
 
       if (!authKey) {
@@ -428,13 +392,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           count: messages.length
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -443,7 +400,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * Body: { authKey, groupName }
    */
   fastify.post('/device/group', async (request: FastifyRequest<{ Body: DeviceGroupBody }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey, groupName } = request.body || {};
 
       if (!authKey || !groupName) {
@@ -489,13 +445,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           groupName: groupName
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -503,7 +452,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * GET /device/groups?authKey={authKey}
    */
   fastify.get('/device/groups', async (request: FastifyRequest<{ Querystring: DeviceGroupsQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey } = request.query;
 
       if (!authKey) {
@@ -529,13 +477,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           groups: groups.map(g => g.name)
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -544,7 +485,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * Body: { authKey, toDevice, command, mode, executeAt?, countdown?, interval? }
    */
   fastify.post('/schedule', async (request: FastifyRequest<{ Body: CreateScheduleBody }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey, toDevice, command, mode, executeAt, countdown, interval } = request.body || {};
 
       // 参数校验
@@ -625,14 +565,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           createdAt: task.createdAt
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      const errorMessage = error instanceof Error ? error.message : '服务器内部错误';
-      return reply.status(500).send({
-        message: 1002,
-        detail: errorMessage
-      });
-    }
   });
 
   /**
@@ -641,7 +573,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * Body: { authKey, taskId }
    */
   fastify.delete('/schedule', async (request: FastifyRequest<{ Body: CancelScheduleBody }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey, taskId } = request.body || {};
 
       if (!authKey) {
@@ -683,13 +614,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           taskId
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -698,7 +622,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * 返回与该设备相关的所有定时任务
    */
   fastify.get('/schedule', async (request: FastifyRequest<{ Querystring: QueryScheduleQuery }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey } = request.query;
 
       if (!authKey) {
@@ -745,13 +668,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           stats
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      return reply.status(500).send({
-        message: 1002,
-        detail: '服务器内部错误'
-      });
-    }
   });
 
   /**
@@ -760,7 +676,6 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
    * Body: { authKey, taskId, command?, mode?, executeAt?, countdown?, interval?, enabled? }
    */
   fastify.put('/schedule', async (request: FastifyRequest<{ Body: UpdateScheduleBody }>, reply: FastifyReply): Promise<ApiResponse> => {
-    try {
       const { authKey, taskId, command, mode, executeAt, countdown, interval, enabled } = request.body || {};
 
       if (!authKey) {
@@ -855,13 +770,5 @@ export function setupRoutes(fastify: FastifyInstance, deviceCache: IDeviceCache)
           enabled: updatedTask.enabled
         }
       };
-    } catch (error) {
-      fastify.log.error(error);
-      const errorMessage = error instanceof Error ? error.message : '服务器内部错误';
-      return reply.status(500).send({
-        message: 1002,
-        detail: errorMessage
-      });
-    }
   });
 }

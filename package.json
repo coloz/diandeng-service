@@ -28,7 +28,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@types/mqtt": "^0.0.34",
     "aedes": "^0.51.3",
     "better-sqlite3": "^11.0.0",
     "dotenv": "^17.2.3",

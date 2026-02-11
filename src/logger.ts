@@ -86,103 +86,28 @@ class Logger {
   }
 
   /**
-   * 认证相关日志
+   * 创建带标签的 DEBUG 级别日志方法
    */
-  auth(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[AUTH] ${message}`, ...args);
-    }
+  private createTaggedLogger(tag: string): (message: string, ...args: unknown[]) => void {
+    return (message: string, ...args: unknown[]) => {
+      if (this.level >= LogLevel.DEBUG) {
+        console.log(`[${tag}] ${message}`, ...args);
+      }
+    };
   }
 
-  /**
-   * 发布相关日志
-   */
-  publish(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[PUBLISH] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * 订阅相关日志
-   */
-  subscribe(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[SUBSCRIBE] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * 连接相关日志
-   */
-  connect(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[CONNECT] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * 断开连接日志
-   */
-  disconnect(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[DISCONNECT] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * 转发相关日志
-   */
-  forward(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[FORWARD] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * 组消息日志
-   */
-  group(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[GROUP] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * 消息日志
-   */
-  message(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[MESSAGE] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * HTTP 相关日志
-   */
-  http(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[HTTP] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * 定时任务调度器日志
-   */
-  scheduler(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[SCHEDULER] ${message}`, ...args);
-    }
-  }
-
-  /**
-   * Bridge 桥接日志
-   */
-  bridge(message: string, ...args: unknown[]): void {
-    if (this.level >= LogLevel.DEBUG) {
-      console.log(`[BRIDGE] ${message}`, ...args);
-    }
-  }
+  // 各模块带标签的 DEBUG 日志方法
+  auth = this.createTaggedLogger('AUTH');
+  publish = this.createTaggedLogger('PUBLISH');
+  subscribe = this.createTaggedLogger('SUBSCRIBE');
+  connect = this.createTaggedLogger('CONNECT');
+  disconnect = this.createTaggedLogger('DISCONNECT');
+  forward = this.createTaggedLogger('FORWARD');
+  group = this.createTaggedLogger('GROUP');
+  message = this.createTaggedLogger('MESSAGE');
+  http = this.createTaggedLogger('HTTP');
+  scheduler = this.createTaggedLogger('SCHEDULER');
+  bridge = this.createTaggedLogger('BRIDGE');
 }
 
 // 导出单例

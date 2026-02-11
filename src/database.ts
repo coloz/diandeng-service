@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { Device, Group, BridgeRemote } from './types';
+import config from './config';
 
 let db: BetterSqlite3Database | null = null;
 
@@ -40,7 +41,7 @@ function clearStmtCache(): void {
  * 初始化数据库
  */
 export function initDatabase(): BetterSqlite3Database {
-  const dbPath = path.join(__dirname, '..', 'data', 'broker.db');
+  const dbPath = path.join(__dirname, '..', 'data', config.database.filename);
   
   // 确保data目录存在
   const dataDir = path.dirname(dbPath);

@@ -2,7 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import { initDatabase } from '../src/database';
 import { setupWebRoutes } from './routes';
 
-// Web管理面板配置
+// Web用户接口配置
 const config = {
   http: {
     port: parseInt(process.env['WEB_PORT'] || '3001', 10),
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
       port: config.http.port,
       host: config.http.host
     });
-    console.log(`Web 管理面板已启动: http://localhost:${config.http.port}`);
+    console.log(`Web 用户接口服务已启动: http://localhost:${config.http.port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

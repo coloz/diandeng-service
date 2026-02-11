@@ -136,7 +136,7 @@ async function build() {
   console.log('  npm install');
   console.log('  node cli.js          # 启动所有服务');
   console.log('  node cli.js broker   # 仅启动 MQTT Broker');
-  console.log('  node cli.js web      # 仅启动 Web 管理面板');
+  console.log('  node cli.js web      # 仅启动 Web 用户接口服务');
 }
 
 build().catch(err => {

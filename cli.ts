@@ -2,7 +2,7 @@
 
 /**
  * 点灯Broker CLI
- * 统一入口，用于启动 MQTT Broker 和 Web 管理面板
+ * 统一入口，用于启动 MQTT Broker 和 Web 用户接口服务
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -49,10 +49,10 @@ function printHelp(): void {
   log('  node dist/cli.js [命令] [选项]\n');
   
   log('命令:', colors.bright);
-  log('  all, start    启动所有服务 (MQTT Broker + Web 管理面板) [默认]');
+  log('  all, start    启动所有服务 (MQTT Broker + Web 用户接口) [默认]');
   log('                开发环境下会同时启动 Angular 开发服务器');
   log('  broker        仅启动 MQTT Broker 服务');
-  log('  web           仅启动 Web 管理面板');
+  log('  web           仅启动 Web 用户接口服务');
   log('  help          显示帮助信息');
   log('  version       显示版本信息\n');
   
@@ -136,10 +136,10 @@ function startBroker(verbose: boolean = false): ChildProcess {
 }
 
 /**
- * 启动 Web 管理面板
+ * 启动 Web 用户接口服务
  */
 function startWeb(verbose: boolean = false): ChildProcess {
-  log('🌐 正在启动 Web 管理面板...', colors.green);
+  log('🌐 正在启动 Web 用户接口服务...', colors.green);
   const scriptPath = path.join(__dirname, 'web', `index${scriptExt}`);
   return startProcess('Web', scriptPath, colors.cyan, verbose);
 }

@@ -35,8 +35,7 @@
     "fast-json-stringify": "^6.2.0",
     "fastify": "^4.26.0",
     "mqtt": "^5.15.0",
-    "uuid": "^9.0.1",
-    "websocket-stream": "^5.5.2"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",

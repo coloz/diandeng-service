@@ -59,7 +59,6 @@ function printHelp(): void {
   log('  MQTT_PORT          MQTT 服务端口 (默认: 1883)');
   log('  HTTP_PORT          HTTP API 端口 (默认: 3000)');
   log('  WEB_PORT           Web 面板端口 (默认: 3001)');
-  log('  WS_PORT            WebSocket 端口 (默认: 8083)');
   log('  LOG_LEVEL          日志级别 (none/error/warn/info/debug)\n');
   
   log('选项:', colors.bright);

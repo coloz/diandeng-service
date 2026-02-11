@@ -35,6 +35,7 @@ Authorization: your_user_token_here
 - [获取设备详情](#获取设备详情)
 - [创建设备](#创建设备)
 - [获取设备连接凭证](#获取设备连接凭证)
+- [查询时序数据](#查询时序数据)
 - [Bridge 远程 Broker 管理](#bridge-远程-broker-管理)
   - [获取 Bridge 信息](#获取-bridge-信息)
   - [添加远程 Broker](#添加远程-broker)
@@ -199,6 +200,65 @@ GET /user/device/:uuid/connection
 ```
 
 > **注意**：每次调用此接口都会重新生成连接凭证，之前的凭证将失效。
+
+---
+
+## 查询时序数据
+
+查询指定设备的时序数据，支持按数据键名和时间范围过滤。
+
+> 时序数据默认保留 30 天（可通过 `.env` 中 `TIMESERIES_RETENTION_DAYS` 配置），过期数据将自动清除。
+
+**请求**
+```
+GET /user/device/:uuid/timeseries?dataKey=temperature&startTime=1707600000000&endTime=1707700000000&limit=100
+Authorization: Bearer your_user_token
+```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| uuid | string | 是 | 设备唯一标识（路径参数） |
+| dataKey | string | 否 | 数据键名，不传则返回所有键的数据 |
+| startTime | number | 否 | 起始时间戳（毫秒） |
+| endTime | number | 否 | 结束时间戳（毫秒） |
+| limit | number | 否 | 返回条数限制，默认100，最大1000 |
+
+**响应**
+```json
+{
+  "message": 1000,
+  "detail": {
+    "deviceUuid": "9140dxx9843bxxd6bc439exxxxxxxxxx",
+    "dataKey": "temperature",
+    "total": 3,
+    "data": [
+      {
+        "device_uuid": "9140dxx9843bxxd6bc439exxxxxxxxxx",
+        "data_key": "temperature",
+        "value": 26.5,
+        "timestamp": 1707690000000,
+        "created_at": "2026-02-11T10:00:00.000Z"
+      },
+      {
+        "device_uuid": "9140dxx9843bxxd6bc439exxxxxxxxxx",
+        "data_key": "temperature",
+        "value": 25.8,
+        "timestamp": 1707680000000,
+        "created_at": "2026-02-11T09:30:00.000Z"
+      },
+      {
+        "device_uuid": "9140dxx9843bxxd6bc439exxxxxxxxxx",
+        "data_key": "temperature",
+        "value": 25.1,
+        "timestamp": 1707670000000,
+        "created_at": "2026-02-11T09:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+> **说明**：返回结果按时间戳降序排列（最新数据在前）。
 
 ---
 

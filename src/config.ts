@@ -60,6 +60,12 @@ const config: Config = {
     expireTime: getEnvNumber('MESSAGE_EXPIRE_TIME', 120 * 1000)
   },
 
+  // 时序数据配置
+  timeseries: {
+    // 时序数据最大存储天数，超过此时间的记录将被自动清除
+    retentionDays: getEnvNumber('TIMESERIES_RETENTION_DAYS', 30)
+  },
+
   // 缓存配置
   cache: {
     // 过期消息清理间隔（毫秒）

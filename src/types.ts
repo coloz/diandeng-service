@@ -137,6 +137,18 @@ export interface BridgeShareDataMessage {
 }
 
 /**
+ * 时序数据接口
+ */
+export interface TimeseriesData {
+  id?: number;
+  device_uuid: string;
+  data_key: string;
+  value: number;
+  timestamp: number;
+  created_at?: string;
+}
+
+/**
  * 暂存消息接口
  */
 export interface PendingMessage {
@@ -323,6 +335,20 @@ export interface SharedDeviceParams {
 }
 
 /**
+ * 时序数据查询参数
+ */
+export interface TimeseriesQueryParams {
+  uuid: string;
+}
+
+export interface TimeseriesQuerystring {
+  dataKey?: string;
+  startTime?: string;
+  endTime?: string;
+  limit?: string;
+}
+
+/**
  * 配置接口
  */
 export interface Config {
@@ -338,6 +364,9 @@ export interface Config {
     maxLength: number;
     publishRateLimit: number;
     expireTime: number;
+  };
+  timeseries: {
+    retentionDays: number;
   };
   cache: {
     cleanupInterval: number;

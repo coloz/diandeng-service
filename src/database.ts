@@ -12,6 +12,9 @@ let db: BetterSqlite3Database | null = null;
  */
 const stmtCache = new Map<string, Statement<unknown[], unknown>>();
 
+/** 已验证存在的时序数据分表缓存 */
+const verifiedTimeseriesTables = new Set<string>();
+
 /**
  * 获取预编译语句（懒加载 + 缓存）
  * @param key - 语句的唯一标识
@@ -30,6 +33,7 @@ function getStmt(key: string, sql: string): Statement<unknown[], unknown> {
  */
 function clearStmtCache(): void {
   stmtCache.clear();
+  verifiedTimeseriesTables.clear();
 }
 
 /**
@@ -587,4 +591,234 @@ export function checkBridgeDeviceAccess(targetClientId: string, fromBrokerId: st
   `);
   const result = permStmt.get(fromBrokerId, targetClientId) as { permissions: string } | undefined;
   return result ? (result.permissions as 'read' | 'readwrite') : 'none';
+}
+
+// ========== 时序数据（按天分表） ==========
+
+/**
+ * 根据时间戳生成时序数据分表名
+ * @param timestamp 毫秒时间戳
+ * @returns 表名，格式 ts_YYYYMMDD
+ */
+function getTimeseriesTableName(timestamp: number): string {
+  const date = new Date(timestamp);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `ts_${y}${m}${d}`;
+}
+
+/**
+ * 确保指定日期的时序数据表存在（懒创建 + 内存缓存）
+ */
+function ensureTimeseriesTable(tableName: string): void {
+  if (verifiedTimeseriesTables.has(tableName)) return;
+  const database = getDb();
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS ${tableName} (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_uuid TEXT NOT NULL,
+      data_key TEXT NOT NULL,
+      value REAL NOT NULL,
+      timestamp INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_${tableName}_device ON ${tableName}(device_uuid);
+    CREATE INDEX IF NOT EXISTS idx_${tableName}_device_key ON ${tableName}(device_uuid, data_key);
+    CREATE INDEX IF NOT EXISTS idx_${tableName}_ts ON ${tableName}(timestamp);
+  `);
+  verifiedTimeseriesTables.add(tableName);
+}
+
+/**
+ * 获取数据库中所有时序数据分表名（已排序）
+ */
+function getAllTimeseriesTables(): string[] {
+  const rows = getDb().prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ts_%' ORDER BY name ASC`
+  ).all() as Array<{ name: string }>;
+  return rows.map(r => r.name);
+}
+
+/**
+ * 获取指定时间范围内的分表名列表
+ */
+function getTimeseriesTablesInRange(startTime: number, endTime: number): string[] {
+  const startTable = getTimeseriesTableName(startTime);
+  const endTable = getTimeseriesTableName(endTime);
+
+  if (startTable === endTable) {
+    return [startTable];
+  }
+
+  const tables: string[] = [];
+  const current = new Date(startTime);
+  current.setHours(0, 0, 0, 0);
+  const endDate = new Date(endTime);
+
+  while (current <= endDate) {
+    tables.push(getTimeseriesTableName(current.getTime()));
+    current.setDate(current.getDate() + 1);
+  }
+
+  return tables;
+}
+
+/**
+ * 检查时序数据表是否存在
+ */
+function timeseriesTableExists(tableName: string): boolean {
+  if (verifiedTimeseriesTables.has(tableName)) return true;
+  const result = getDb().prepare(
+    `SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`
+  ).get(tableName);
+  return result !== undefined;
+}
+
+/**
+ * 清理过期时序数据（按天删除整张表）
+ * @param retentionDays 保留天数
+ * @returns 删除的表数量
+ */
+export function cleanExpiredTimeseriesData(retentionDays: number): number {
+  const cutoffTimestamp = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  const cutoffTable = getTimeseriesTableName(cutoffTimestamp);
+
+  const tables = getAllTimeseriesTables();
+  const database = getDb();
+  let droppedCount = 0;
+
+  for (const name of tables) {
+    // 表名按字典序比较，小于截止日期的表都需要删除
+    if (name < cutoffTable) {
+      database.exec(`DROP TABLE IF EXISTS ${name}`);
+      verifiedTimeseriesTables.delete(name);
+      stmtCache.delete(`insertTs_${name}`);
+      droppedCount++;
+    }
+  }
+
+  return droppedCount;
+}
+
+/**
+ * 插入时序数据（自动路由到对应日期的分表）
+ */
+export function insertTimeseriesData(deviceUuid: string, dataKey: string, value: number, timestamp: number): RunResult {
+  const tableName = getTimeseriesTableName(timestamp);
+  ensureTimeseriesTable(tableName);
+  const cacheKey = `insertTs_${tableName}`;
+  const stmt = getStmt(cacheKey, `
+    INSERT INTO ${tableName} (device_uuid, data_key, value, timestamp)
+    VALUES (?, ?, ?, ?)
+  `);
+  return stmt.run(deviceUuid, dataKey, value, timestamp);
+}
+
+/**
+ * 批量插入时序数据（按天分组，事务写入）
+ */
+export function batchInsertTimeseriesData(records: Array<{ deviceUuid: string; dataKey: string; value: number; timestamp: number }>): void {
+  if (records.length === 0) return;
+
+  // 按日期分组
+  const groups = new Map<string, typeof records>();
+  for (const record of records) {
+    const tableName = getTimeseriesTableName(record.timestamp);
+    if (!groups.has(tableName)) {
+      groups.set(tableName, []);
+    }
+    groups.get(tableName)!.push(record);
+  }
+
+  const database = getDb();
+  const transaction = database.transaction(() => {
+    for (const [tableName, items] of groups) {
+      ensureTimeseriesTable(tableName);
+      const stmt = database.prepare(`
+        INSERT INTO ${tableName} (device_uuid, data_key, value, timestamp)
+        VALUES (?, ?, ?, ?)
+      `);
+      for (const item of items) {
+        stmt.run(item.deviceUuid, item.dataKey, item.value, item.timestamp);
+      }
+    }
+  });
+
+  transaction();
+}
+
+/**
+ * 查询设备时序数据（自动跨分表查询）
+ * 单日范围直接查对应分表，跨天则 UNION ALL 合并
+ */
+export function queryTimeseriesData(
+  deviceUuid: string,
+  dataKey?: string,
+  startTime?: number,
+  endTime?: number,
+  limit: number = 100
+): Array<{ device_uuid: string; data_key: string; value: number; timestamp: number; created_at: string }> {
+  // 确定要查询的分表
+  let targetTables: string[];
+
+  if (startTime !== undefined && endTime !== undefined) {
+    targetTables = getTimeseriesTablesInRange(startTime, endTime);
+  } else if (startTime !== undefined) {
+    targetTables = getTimeseriesTablesInRange(startTime, Date.now());
+  } else if (endTime !== undefined) {
+    const allTables = getAllTimeseriesTables();
+    const endTable = getTimeseriesTableName(endTime);
+    targetTables = allTables.filter(t => t <= endTable);
+  } else {
+    // 无时间范围，查询所有现有分表
+    targetTables = getAllTimeseriesTables();
+  }
+
+  // 过滤出实际存在的表
+  const existingTables = targetTables.filter(t => timeseriesTableExists(t));
+  if (existingTables.length === 0) return [];
+
+  // 构建 WHERE 条件
+  const conditions: string[] = ['device_uuid = ?'];
+  const baseParams: unknown[] = [deviceUuid];
+
+  if (dataKey) {
+    conditions.push('data_key = ?');
+    baseParams.push(dataKey);
+  }
+  if (startTime !== undefined) {
+    conditions.push('timestamp >= ?');
+    baseParams.push(startTime);
+  }
+  if (endTime !== undefined) {
+    conditions.push('timestamp <= ?');
+    baseParams.push(endTime);
+  }
+
+  const whereClause = conditions.join(' AND ');
+
+  if (existingTables.length === 1) {
+    // 单表查询
+    const sql = `SELECT device_uuid, data_key, value, timestamp, created_at FROM ${existingTables[0]} WHERE ${whereClause} ORDER BY timestamp DESC LIMIT ?`;
+    const params = [...baseParams, limit];
+    return getDb().prepare(sql).all(...params) as Array<{ device_uuid: string; data_key: string; value: number; timestamp: number; created_at: string }>;
+  }
+
+  // 多表 UNION ALL 查询
+  const selects = existingTables.map(t =>
+    `SELECT device_uuid, data_key, value, timestamp, created_at FROM ${t} WHERE ${whereClause}`
+  );
+  const sql = `SELECT * FROM (${selects.join(' UNION ALL ')}) ORDER BY timestamp DESC LIMIT ?`;
+
+  // 每个 SELECT 都需要一套参数
+  const params: unknown[] = [];
+  for (let i = 0; i < existingTables.length; i++) {
+    params.push(...baseParams);
+  }
+  params.push(limit);
+
+  return getDb().prepare(sql).all(...params) as Array<{ device_uuid: string; data_key: string; value: number; timestamp: number; created_at: string }>;
 }

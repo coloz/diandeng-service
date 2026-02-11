@@ -1,5 +1,5 @@
 import Aedes, { Client as AedesClient, AuthenticateError, PublishPacket, Subscription } from 'aedes';
-import { getDeviceByClientId, getDeviceGroups, isDeviceInGroup, updateDeviceOnlineStatus, markDeviceOffline } from './database';
+import { getDeviceByClientId, getDeviceGroups, isDeviceInGroup, updateDeviceOnlineStatus, markDeviceOffline, insertTimeseriesData, batchInsertTimeseriesData } from './database';
 import config from './config';
 import { Device, ForwardMessage, IDeviceCache } from './types';
 import { logger } from './logger';
@@ -15,6 +15,7 @@ const BRIDGE_GROUP_TOPIC_REGEX = /^\/bridge\/group\/([^/]+)$/;
 interface DeviceMessage {
   toDevice?: string;
   toGroup?: string;
+  ts?: boolean;
   data: unknown;
 }
 
@@ -276,6 +277,10 @@ export function setupBroker(aedes: Aedes, deviceCache: IDeviceCache): void {
 
       // 处理设备间消息转发
       if (topic.startsWith('/device/') && topic.endsWith('/s')) {
+        // 处理时序数据持久化
+        if (message.ts && message.data) {
+          handleTimeseriesData(client.id, message.data, deviceCache);
+        }
         handleDeviceMessage(aedes, client, message, deviceCache);
       }
       
@@ -366,6 +371,60 @@ function checkTopicPermission(
 
   // 其他topic不允许
   return false;
+}
+
+/**
+ * 处理时序数据持久化
+ * 当消息中 ts=true 时，将 data 中的键值对作为时序数据写入 SQLite
+ */
+function handleTimeseriesData(
+  clientId: string,
+  data: unknown,
+  deviceCache: IDeviceCache
+): void {
+  // 获取设备信息以取得 uuid
+  const device = deviceCache.getDeviceByClientId(clientId);
+  if (!device) {
+    logger.message(`时序数据写入失败：设备信息不存在 ${clientId}`);
+    return;
+  }
+
+  const deviceUuid = device.uuid;
+  const timestamp = Date.now();
+
+  if (typeof data !== 'object' || data === null) {
+    logger.message(`时序数据格式错误：data 必须是对象`);
+    return;
+  }
+
+  const records: Array<{ deviceUuid: string; dataKey: string; value: number; timestamp: number }> = [];
+  const entries = Object.entries(data as Record<string, unknown>);
+
+  for (const [key, val] of entries) {
+    const numVal = Number(val);
+    if (isNaN(numVal)) {
+      logger.message(`时序数据跳过非数值字段: ${key}=${val}`);
+      continue;
+    }
+    records.push({ deviceUuid, dataKey: key, value: numVal, timestamp });
+  }
+
+  if (records.length === 0) {
+    logger.message(`时序数据为空，跳过写入`);
+    return;
+  }
+
+  try {
+    if (records.length === 1) {
+      const r = records[0]!;
+      insertTimeseriesData(r.deviceUuid, r.dataKey, r.value, r.timestamp);
+    } else {
+      batchInsertTimeseriesData(records);
+    }
+    logger.message(`时序数据已写入 ${records.length} 条: 设备 ${deviceUuid}`);
+  } catch (error) {
+    logger.error(`时序数据写入失败: ${(error as Error).message}`);
+  }
 }
 
 /**

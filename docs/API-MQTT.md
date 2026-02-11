@@ -9,6 +9,7 @@ MQTT协议接口，用于设备实时消息通信。
 ## 目录
 - [MQTT连接](#mqtt连接)
 - [设备发布](#设备发布)
+- [时序数据上报](#时序数据上报)
 - [设备订阅](#设备订阅)
 - [组发布](#组发布)
 - [组订阅](#组订阅)
@@ -74,6 +75,7 @@ void setup() {
 ```json
 {
   "toDevice": "device_target123",
+  "ts": false,
   "data": {
     "get": "state"
   }
@@ -83,7 +85,8 @@ void setup() {
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | toDevice | string | 是 | 目标设备的clientId |
-| data | object | 是 | 承载数据 |
+| ts | boolean | 否 | 是否为时序数据，默认 false。为 true 时 data 中的键值对将被持久化到数据库 |
+| data | object | 是 | 承载数据，当 ts=true 时，值必须为数值类型 |
 
 **示例**
 ```javascript
@@ -94,6 +97,60 @@ client.publish('/device/device_abc123def456/s', JSON.stringify({
 ```
 
 > **注意**：设备只能发布到自己的 `/s` topic，发布到其他设备的topic将被断开连接。
+
+---
+
+## 时序数据上报
+
+设备上报时序数据（如传感器数值），数据将自动持久化到 SQLite 数据库，同时消息仍会正常转发给目标设备。
+
+**Topic**
+```
+/device/{clientId}/s
+```
+> 与设备发布使用相同的 Topic，通过 `ts: true` 标识时序数据
+
+**消息格式**
+```json
+{
+  "toDevice": "device_target123",
+  "ts": true,
+  "data": {
+    "temperature": 25.6,
+    "humidity": 60.2
+  }
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| toDevice | string | 是 | 目标设备的clientId |
+| ts | boolean | 是 | 必须为 true，标识为时序数据 |
+| data | object | 是 | 键值对格式，键为数据名称（dataKey），值必须为数值类型 |
+
+**持久化字段说明**
+
+| 字段 | 说明 |
+|------|------|
+| device_uuid | 发送设备的 UUID，通过 Topic 中的 clientId 自动获取 |
+| data_key | data 对象中的键名（如 "temperature"、"humidity"） |
+| value | 对应的数值 |
+| timestamp | 服务器接收时的时间戳（毫秒） |
+
+**示例**
+```javascript
+// 上报温湿度时序数据
+client.publish(`/device/${config.clientId}/s`, JSON.stringify({
+  toDevice: 'device_target123',
+  ts: true,
+  data: {
+    temperature: 25.6,
+    humidity: 60.2
+  }
+}));
+```
+
+> **注意**：`data` 中的非数值字段将被跳过，不会写入数据库。
 
 ---
 

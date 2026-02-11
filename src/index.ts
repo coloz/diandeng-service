@@ -1,7 +1,7 @@
 import Aedes from 'aedes';
 import { createServer } from 'net';
 import Fastify from 'fastify';
-import { initDatabase, markInactiveHttpDevicesOffline } from './database';
+import { initDatabase, markInactiveHttpDevicesOffline, cleanExpiredTimeseriesData } from './database';
 import { setupRoutes } from './routes';
 import { setupBroker } from './broker';
 import { deviceCache } from './cache';
@@ -68,12 +68,21 @@ async function main(): Promise<void> {
     }
   }, 10 * 60 * 1000); // 每10分钟
 
+  // 定时清理过期时序数据（每天检查一次）
+  const timeseriesCleanupTimer = setInterval(() => {
+    const droppedCount = cleanExpiredTimeseriesData(config.timeseries.retentionDays);
+    if (droppedCount > 0) {
+      console.log(`已清理 ${droppedCount} 张过期时序数据表（保留 ${config.timeseries.retentionDays} 天）`);
+    }
+  }, 24 * 60 * 60 * 1000); // 每天
+
   // 优雅关闭
   process.on('SIGINT', () => {
     console.log('\n正在关闭服务...');
     
     // 清除定时器
     clearInterval(httpStatusTimer);
+    clearInterval(timeseriesCleanupTimer);
     
     // 停止调度器
     scheduler.stop();
